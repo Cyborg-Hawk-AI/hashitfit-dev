@@ -308,6 +308,9 @@ serve(async (req) => {
 
     console.log('Using single assistant architecture (temporarily)')
     console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
+    
+    // Log the full assistant ID for debugging
+    console.log('Full Assistant ID for debugging:', singleAssistantId)
 
     // Format the raw assessment data for the assistants
     const rawAssessmentData = {
