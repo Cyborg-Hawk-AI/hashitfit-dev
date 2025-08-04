@@ -91,6 +91,76 @@ serve(async (req) => {
 
     console.log('Sending raw assessment data to OpenAI Assistant:', JSON.stringify(rawAssessmentData))
 
+    // Update user profile to mark assessment as completed IMMEDIATELY
+    // This ensures the user can access the dashboard even if AI processing fails
+    const fitnessGoalMapping = {
+      'muscle_gain': 'muscle_gain',
+      'weight_loss': 'weight_loss', 
+      'endurance': 'endurance',
+      'sport_specific': 'sports_performance',
+      'general_fitness': 'general_fitness'
+    }
+
+    const equipmentMapping = {
+      'full_gym': 'full_gym',
+      'home_gym': 'home_gym',
+      'minimal': 'minimal',
+      'bodyweight_only': 'bodyweight',
+      'none': 'none'
+    }
+
+    const mappedFitnessGoal = fitnessGoalMapping[assessmentData.fitnessGoal] || 'general_fitness'
+    const mappedEquipment = equipmentMapping[assessmentData.equipment] || 'minimal'
+
+    console.log('Updating profile to mark assessment as completed...')
+    const { error: profileError } = await supabaseClient
+      .from('profiles')
+      .update({ 
+        has_completed_assessment: true,
+        fitness_goal: mappedFitnessGoal,
+        workout_frequency: assessmentData.workoutFrequency,
+        diet: assessmentData.diet,
+        equipment: mappedEquipment,
+        sports_played: assessmentData.sportsPlayed,
+        allergies: assessmentData.allergies,
+        age: parseInt(assessmentData.age),
+        gender: assessmentData.gender,
+        height: parseFloat(assessmentData.height),
+        weight: parseFloat(assessmentData.weight)
+      })
+      .eq('id', user.id)
+
+    if (profileError) {
+      console.error('Error updating profile:', profileError)
+      throw profileError
+    }
+
+    console.log('Profile updated successfully - user can now access dashboard')
+
+    // Store assessment data
+    const { error: assessmentError } = await supabaseClient
+      .from('assessment_data')
+      .insert({
+        user_id: user.id,
+        age: parseInt(assessmentData.age),
+        gender: assessmentData.gender,
+        height: parseFloat(assessmentData.height),
+        weight: parseFloat(assessmentData.weight),
+        fitness_goal: mappedFitnessGoal,
+        workout_frequency: assessmentData.workoutFrequency,
+        diet: assessmentData.diet,
+        equipment: mappedEquipment,
+        sports_played: assessmentData.sportsPlayed || [],
+        allergies: assessmentData.allergies || []
+      })
+
+    if (assessmentError) {
+      console.error('Error storing assessment data:', assessmentError)
+      throw assessmentError
+    }
+
+    console.log('Assessment data stored successfully')
+
     // First, let's verify the assistant exists by trying to retrieve it
     console.log('Verifying assistant exists...')
     const assistantVerifyResponse = await fetch(`https://api.openai.com/v1/assistants/${assistantId}`, {
@@ -184,10 +254,11 @@ CRITICAL: Respond with ONLY valid JSON in the exact format specified in your ins
     // Poll for completion
     let runStatus = 'in_progress'
     let attempts = 0
-    const maxAttempts = 30 // 30 seconds timeout
+    const maxAttempts = 45 // 45 seconds timeout (increased from 30)
 
     while (runStatus === 'in_progress' || runStatus === 'queued') {
       if (attempts >= maxAttempts) {
+        console.error(`Assistant run timeout after ${maxAttempts} seconds`)
         throw new Error('Assistant run timeout')
       }
 
@@ -440,73 +511,6 @@ CRITICAL: Respond with ONLY valid JSON in the exact format specified in your ins
 
     console.log('Created nutrition plan successfully')
 
-    // Map assessment data to database format
-    const fitnessGoalMapping = {
-      'muscle_gain': 'muscle_gain',
-      'weight_loss': 'weight_loss', 
-      'endurance': 'endurance',
-      'sport_specific': 'sports_performance',
-      'general_fitness': 'general_fitness'
-    }
-
-    const equipmentMapping = {
-      'full_gym': 'full_gym',
-      'home_gym': 'home_gym',
-      'minimal': 'minimal',
-      'bodyweight_only': 'bodyweight',
-      'none': 'none'
-    }
-
-    const mappedFitnessGoal = fitnessGoalMapping[assessmentData.fitnessGoal] || 'general_fitness'
-    const mappedEquipment = equipmentMapping[assessmentData.equipment] || 'minimal'
-
-    // Update user profile to mark assessment as completed
-    const { error: profileError } = await supabaseClient
-      .from('profiles')
-      .update({ 
-        has_completed_assessment: true,
-        fitness_goal: mappedFitnessGoal,
-        workout_frequency: assessmentData.workoutFrequency,
-        diet: assessmentData.diet,
-        equipment: mappedEquipment,
-        sports_played: assessmentData.sportsPlayed,
-        allergies: assessmentData.allergies,
-        age: parseInt(assessmentData.age),
-        gender: assessmentData.gender,
-        height: parseFloat(assessmentData.height),
-        weight: parseFloat(assessmentData.weight)
-      })
-      .eq('id', user.id)
-
-    if (profileError) {
-      console.error('Error updating profile:', profileError)
-      throw profileError
-    }
-
-    console.log('Updated profile successfully')
-
-    // Store assessment data
-    const { error: assessmentError } = await supabaseClient
-      .from('assessment_data')
-      .insert({
-        user_id: user.id,
-        age: parseInt(assessmentData.age),
-        gender: assessmentData.gender,
-        height: parseFloat(assessmentData.height),
-        weight: parseFloat(assessmentData.weight),
-        fitness_goal: mappedFitnessGoal,
-        workout_frequency: assessmentData.workoutFrequency,
-        diet: assessmentData.diet,
-        equipment: mappedEquipment,
-        sports_played: assessmentData.sportsPlayed || [],
-        allergies: assessmentData.allergies || []
-      })
-
-    if (assessmentError) {
-      console.error('Error storing assessment data:', assessmentError)
-      throw assessmentError
-    }
-
     console.log('Assessment completed successfully for user:', user.id)
 
     return new Response(
@@ -527,6 +531,34 @@ CRITICAL: Respond with ONLY valid JSON in the exact format specified in your ins
 
   } catch (error) {
     console.error('Error in generate-workout-plan function:', error)
+    
+    // Check if the profile was already updated (assessment data stored)
+    // If so, return success even if AI processing failed
+    try {
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('has_completed_assessment')
+        .eq('id', user?.id)
+        .single()
+      
+      if (profile?.has_completed_assessment) {
+        console.log('Profile was updated successfully, returning success despite AI processing error')
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Assessment completed successfully. AI plan generation may be delayed.',
+            warning: 'AI processing encountered an issue, but your assessment data has been saved.'
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        )
+      }
+    } catch (profileCheckError) {
+      console.error('Error checking profile status:', profileCheckError)
+    }
+    
     return new Response(
       JSON.stringify({ 
         success: false,
