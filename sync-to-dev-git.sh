@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Action.IT Git Sync Script
-# This script syncs your local changes to the GitHub repository
+# HashimFit Git Sync Script
+# This script syncs your local changes to the GitHub hashitfit-dev repository
 
 set -e  # Exit on any error
 
@@ -52,14 +52,14 @@ print_status "Current remote URL: $REMOTE_URL"
 # Check if we're on the correct remote repository
 EXPECTED_REMOTE="https://github.com/Cyborg-Hawk-AI/hashitfit-dev.git"
 if [[ "$REMOTE_URL" != "$EXPECTED_REMOTE" ]]; then
-    print_warning "Remote URL doesn't match expected actionit-dev repository"
+    print_warning "Remote URL doesn't match expected hashitfit-dev repository"
     print_warning "Expected: $EXPECTED_REMOTE"
     print_warning "Current:  $REMOTE_URL"
     
-    read -p "Do you want to update the remote to point to actionit-dev? (y/N): " -n 1 -r
+    read -p "Do you want to update the remote to point to hashitfit-dev? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Updating remote origin to actionit-dev..."
+        print_status "Updating remote origin to hashitfit-dev..."
         git remote set-url origin "$EXPECTED_REMOTE"
         print_success "Remote updated successfully"
     else
@@ -68,17 +68,17 @@ if [[ "$REMOTE_URL" != "$EXPECTED_REMOTE" ]]; then
     fi
 fi
 
-# Check if we're on the master branch (or main)
-if [[ "$CURRENT_BRANCH" != "master" && "$CURRENT_BRANCH" != "main" ]]; then
-    print_warning "You're not on the master/main branch. Current branch: $CURRENT_BRANCH"
+# Check if we're on the main branch
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+    print_warning "You're not on the main branch. Current branch: $CURRENT_BRANCH"
     
-    read -p "Do you want to switch to master branch? (y/N): " -n 1 -r
+    read -p "Do you want to switch to main branch? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Switching to master branch..."
-        git checkout master
-        CURRENT_BRANCH="master"
-        print_success "Switched to master branch"
+        print_status "Switching to main branch..."
+        git checkout main
+        CURRENT_BRANCH="main"
+        print_success "Switched to main branch"
     else
         print_warning "Continuing with current branch: $CURRENT_BRANCH"
     fi
