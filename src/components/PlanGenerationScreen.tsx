@@ -185,6 +185,21 @@ export function PlanGenerationScreen({ onComplete, assessmentData }: PlanGenerat
             </div>
           </Card>
 
+          {/* Error Display */}
+          {error && (
+            <motion.div 
+              className="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg border border-red-200 dark:border-red-800 mb-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+            >
+              <h3 className="font-semibold text-red-900 dark:text-red-100 mb-2">⚠️ Notice</h3>
+              <p className="text-sm text-red-800 dark:text-red-200">
+                {error}
+              </p>
+            </motion.div>
+          )}
+
           {/* What's Next Info */}
           <motion.div 
             className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800"
