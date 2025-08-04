@@ -77,7 +77,34 @@ export class PlanGenerationService {
       // If no profiles found, user hasn't completed assessment
       if (!profiles || profiles.length === 0) {
         console.log('🔍 PlanGenerationService: No profiles found for userId:', userId);
-        return false;
+        
+        // Try to create a profile automatically
+        console.log('🔍 PlanGenerationService: Attempting to create missing profile...');
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            name: '',
+            age: 30,
+            gender: 'male',
+            height: 175,
+            weight: 75,
+            fitness_goal: 'muscle_gain',
+            workout_frequency: 3,
+            diet: 'standard',
+            equipment: 'full_gym',
+            has_completed_assessment: false
+          })
+          .select('has_completed_assessment')
+          .single();
+
+        if (createError) {
+          console.error('🔍 PlanGenerationService: Error creating profile:', createError);
+          return false;
+        }
+
+        console.log('🔍 PlanGenerationService: Profile created successfully:', newProfile);
+        return newProfile?.has_completed_assessment || false;
       }
 
       console.log('🔍 PlanGenerationService: Found', profiles.length, 'profile(s) for userId:', userId);
