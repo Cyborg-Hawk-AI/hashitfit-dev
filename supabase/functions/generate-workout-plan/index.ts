@@ -290,17 +290,12 @@ serve(async (req) => {
     const workoutAssistantId = Deno.env.get('OPENAI_ASSISTANT_WORKOUT_ID')
     const nutritionAssistantId = Deno.env.get('OPENAI_ASSISTANT_NUTRITION_ID')
     const recommendationsAssistantId = Deno.env.get('OPENAI_ASSISTANT_RECOMMENDATIONS_ID')
+    const singleAssistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
     
     if (!openaiApiKey) {
       console.error('Missing OpenAI API Key')
       throw new Error('Missing OpenAI API Key')
     }
-    
-    // Check if we have the new multi-assistant setup or fall back to single assistant
-    const workoutAssistantId = Deno.env.get('OPENAI_ASSISTANT_WORKOUT_ID')
-    const nutritionAssistantId = Deno.env.get('OPENAI_ASSISTANT_NUTRITION_ID')
-    const recommendationsAssistantId = Deno.env.get('OPENAI_ASSISTANT_RECOMMENDATIONS_ID')
-    const singleAssistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
     
     // Check if we have all three multi-assistant IDs
     const useMultiAssistant = workoutAssistantId && nutritionAssistantId && recommendationsAssistantId
