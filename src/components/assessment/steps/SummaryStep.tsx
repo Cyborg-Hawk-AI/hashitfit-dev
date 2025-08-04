@@ -87,6 +87,8 @@ export function SummaryStep({ form }: SummaryStepProps) {
             <h3 className="font-medium">Basic Info</h3>
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">
+            <span className="text-muted-foreground">Name:</span>
+            <span className="font-medium">{formData.name}</span>
             <span className="text-muted-foreground">Age:</span>
             <span>{formData.age} years</span>
             <span className="text-muted-foreground">Gender:</span>

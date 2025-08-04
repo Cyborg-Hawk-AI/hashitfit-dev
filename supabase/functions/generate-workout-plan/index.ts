@@ -117,6 +117,7 @@ serve(async (req) => {
       .from('profiles')
       .update({ 
         has_completed_assessment: true,
+        name: assessmentData.name,
         fitness_goal: mappedFitnessGoal,
         workout_frequency: assessmentData.workoutFrequency,
         diet: assessmentData.diet,
@@ -142,6 +143,7 @@ serve(async (req) => {
       .from('assessment_data')
       .insert({
         user_id: user.id,
+        name: assessmentData.name,
         age: parseInt(assessmentData.age),
         gender: assessmentData.gender,
         height: parseFloat(assessmentData.height),

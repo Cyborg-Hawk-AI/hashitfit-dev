@@ -2,6 +2,7 @@
 import supabase from '@/lib/supabase';
 
 export interface AssessmentData {
+  name: string;
   age: number;
   gender: string;
   height: number;

@@ -15,6 +15,7 @@ import { ActivitiesStep } from "./assessment/steps/ActivitiesStep";
 import { SummaryStep } from "./assessment/steps/SummaryStep";
 
 const FormSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(50, "Name must be less than 50 characters"),
   age: z.coerce.number().min(16).max(90),
   gender: z.enum(["male", "female", "other"]),
   height: z.coerce.number().min(120).max(230),
@@ -30,6 +31,7 @@ const FormSchema = z.object({
 type FormSchemaType = z.infer<typeof FormSchema>;
 
 const DEFAULT_VALUES: FormSchemaType = {
+  name: "",
   age: 30,
   gender: "male",
   height: 175,
@@ -71,7 +73,7 @@ export function RedesignedAssessmentForm({ onComplete, isProcessing = false }: R
     
     switch (currentStepId) {
       case "basic":
-        return !!(values.age && values.gender && values.height && values.weight);
+        return !!(values.name && values.age && values.gender && values.height && values.weight);
       case "goals":
         return !!values.fitnessGoal;
       case "preferences":
@@ -113,13 +115,14 @@ export function RedesignedAssessmentForm({ onComplete, isProcessing = false }: R
       const formData = form.getValues();
       
       // Ensure all required fields are present before submission
-      if (!formData.age || !formData.gender || !formData.height || !formData.weight || 
+      if (!formData.name || !formData.age || !formData.gender || !formData.height || !formData.weight || 
           !formData.fitnessGoal || !formData.workoutFrequency || !formData.diet || !formData.equipment) {
         throw new Error("Please complete all required fields");
       }
       
       // Cast to AssessmentData after validation
       const assessmentData: AssessmentData = {
+        name: formData.name,
         age: formData.age,
         gender: formData.gender,
         height: formData.height,

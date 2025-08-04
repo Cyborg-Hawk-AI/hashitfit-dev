@@ -4,7 +4,7 @@ import { UseFormReturn } from "react-hook-form";
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { User, Ruler, Weight } from "lucide-react";
+import { User, Ruler, Weight, UserCheck } from "lucide-react";
 
 interface BasicInfoStepProps {
   form: UseFormReturn<any>;
@@ -20,6 +20,25 @@ export function BasicInfoStep({ form }: BasicInfoStepProps) {
         <p className="text-sm text-muted-foreground">
           Let's start with some basic information about you
         </p>
+      </div>
+
+      <div className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="flex items-center gap-2">
+                <UserCheck size={16} />
+                Full Name
+              </FormLabel>
+              <FormControl>
+                <Input placeholder="Enter your full name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
