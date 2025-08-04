@@ -35,9 +35,49 @@ export default function Index() {
       if (profiles && profiles.length > 0) {
         console.log('🔍 DEBUG: Profile data:', profiles[0]);
         console.log('🔍 DEBUG: has_completed_assessment:', profiles[0].has_completed_assessment);
+      } else {
+        console.log('🔍 DEBUG: No profile found, creating one...');
+        await createMissingProfile();
       }
     } catch (error) {
       console.error('🔍 DEBUG: Error querying database:', error);
+    }
+  };
+
+  // Function to create missing profile
+  const createMissingProfile = async () => {
+    if (!userId) return;
+    
+    try {
+      console.log('🔍 DEBUG: Creating missing profile for userId:', userId);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          name: '',
+          age: 30,
+          gender: 'male',
+          height: 175,
+          weight: 75,
+          fitness_goal: 'muscle_gain',
+          workout_frequency: 3,
+          diet: 'standard',
+          equipment: 'full_gym',
+          has_completed_assessment: false
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('🔍 DEBUG: Error creating profile:', error);
+      } else {
+        console.log('🔍 DEBUG: Profile created successfully:', data);
+        // Refresh the page to trigger the assessment check again
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('🔍 DEBUG: Error in createMissingProfile:', error);
     }
   };
 
@@ -123,6 +163,13 @@ export default function Index() {
                   className="border-red-300 text-red-700 hover:bg-red-50"
                 >
                   <Bug size={16} />
+                </Button>
+                <Button 
+                  onClick={createMissingProfile}
+                  variant="outline"
+                  className="border-green-300 text-green-700 hover:bg-green-50"
+                >
+                  Create Profile
                 </Button>
               </>
             ) : (
