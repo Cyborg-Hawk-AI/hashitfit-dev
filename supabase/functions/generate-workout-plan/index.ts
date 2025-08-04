@@ -297,22 +297,17 @@ serve(async (req) => {
     }
     
     // Check if we have the new multi-assistant setup or fall back to single assistant
-    const useMultiAssistant = workoutAssistantId && nutritionAssistantId && recommendationsAssistantId
+    // For now, let's use single assistant until multi-assistant IDs are properly configured
+    const useMultiAssistant = false // Temporarily disable multi-assistant
     const singleAssistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
     
-    if (!useMultiAssistant && !singleAssistantId) {
-      console.error('Missing Assistant IDs - neither multi-assistant nor single assistant configured')
-      throw new Error('Missing Assistant IDs')
+    if (!singleAssistantId) {
+      console.error('Missing Single Assistant ID')
+      throw new Error('Missing Assistant ID')
     }
 
-    console.log('Using multi-assistant architecture:', useMultiAssistant)
-    if (useMultiAssistant) {
-      console.log('Workout Assistant ID:', workoutAssistantId?.substring(0, 10) + '...')
-      console.log('Nutrition Assistant ID:', nutritionAssistantId?.substring(0, 10) + '...')
-      console.log('Recommendations Assistant ID:', recommendationsAssistantId?.substring(0, 10) + '...')
-    } else {
-      console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
-    }
+    console.log('Using single assistant architecture (temporarily)')
+    console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
 
     // Format the raw assessment data for the assistants
     const rawAssessmentData = {
@@ -382,7 +377,6 @@ serve(async (req) => {
       .from('assessment_data')
       .insert({
         user_id: user.id,
-        name: assessmentData.name,
         age: parseInt(assessmentData.age),
         gender: assessmentData.gender,
         height: parseFloat(assessmentData.height),
@@ -656,6 +650,21 @@ serve(async (req) => {
     // Check if the profile was already updated (assessment data stored)
     // If so, return success even if AI processing failed
     try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: {
+              Authorization: authHeader,
+            },
+          },
+          auth: {
+            persistSession: false,
+          },
+        }
+      )
+      
       const { data: profile } = await supabaseClient
         .from('profiles')
         .select('has_completed_assessment')
