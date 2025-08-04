@@ -57,28 +57,42 @@ export class PlanGenerationService {
 
   static async checkUserPlanStatus(userId: string): Promise<boolean> {
     try {
+      console.log('🔍 PlanGenerationService: Starting checkUserPlanStatus for userId:', userId);
+      
       // Use maybeSingle() to handle cases where there might be multiple profile rows
+      console.log('🔍 PlanGenerationService: Querying profiles table for userId:', userId);
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select('has_completed_assessment')
         .eq('id', userId);
 
+      console.log('🔍 PlanGenerationService: Supabase query result - profiles:', profiles);
+      console.log('🔍 PlanGenerationService: Supabase query result - error:', error);
+
       if (error) {
-        console.error('Error checking plan status:', error);
+        console.error('🔍 PlanGenerationService: Error checking plan status:', error);
         return false;
       }
 
       // If no profiles found, user hasn't completed assessment
       if (!profiles || profiles.length === 0) {
+        console.log('🔍 PlanGenerationService: No profiles found for userId:', userId);
         return false;
       }
 
+      console.log('🔍 PlanGenerationService: Found', profiles.length, 'profile(s) for userId:', userId);
+      
       // If multiple profiles found, use the first one (most recent)
       // This handles the duplicate profile issue
       const profile = profiles[0];
-      return profile?.has_completed_assessment || false;
+      console.log('🔍 PlanGenerationService: Using first profile:', profile);
+      
+      const hasCompleted = profile?.has_completed_assessment || false;
+      console.log('🔍 PlanGenerationService: has_completed_assessment value:', hasCompleted);
+      
+      return hasCompleted;
     } catch (error) {
-      console.error('Error checking user plan status:', error);
+      console.error('🔍 PlanGenerationService: Error checking user plan status:', error);
       return false;
     }
   }

@@ -24,23 +24,35 @@ export default function DashboardPage() {
   // Check if user has completed assessment
   useEffect(() => {
     const checkAssessmentStatus = async () => {
+      console.log('🔍 Dashboard: Starting assessment status check');
+      console.log('🔍 Dashboard: userId:', userId);
+      
       if (!userId) {
+        console.log('🔍 Dashboard: No userId, setting isCheckingAssessment to false');
         setIsCheckingAssessment(false);
         return;
       }
 
+      console.log('🔍 Dashboard: UserId found, checking assessment status...');
       try {
+        console.log('🔍 Dashboard: Calling PlanGenerationService.checkUserPlanStatus with userId:', userId);
         const hasCompleted = await PlanGenerationService.checkUserPlanStatus(userId);
+        console.log('🔍 Dashboard: PlanGenerationService.checkUserPlanStatus returned:', hasCompleted);
+        
         if (!hasCompleted) {
-          console.log('User has not completed assessment, redirecting to /assessment');
+          console.log('🔍 Dashboard: User has not completed assessment, redirecting to /assessment');
           navigate('/assessment', { replace: true });
           return;
+        } else {
+          console.log('🔍 Dashboard: User has completed assessment, staying on dashboard');
         }
       } catch (error) {
-        console.error('Error checking assessment status:', error);
+        console.error('🔍 Dashboard: Error checking assessment status:', error);
+        console.log('🔍 Dashboard: Error occurred, redirecting to /assessment');
         navigate('/assessment', { replace: true });
         return;
       } finally {
+        console.log('🔍 Dashboard: Assessment check completed, setting isCheckingAssessment to false');
         setIsCheckingAssessment(false);
       }
     };

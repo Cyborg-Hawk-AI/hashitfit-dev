@@ -16,19 +16,33 @@ export default function Index() {
 
   useEffect(() => {
     const checkAssessmentStatus = async () => {
+      console.log('🔍 Index: Starting assessment status check');
+      console.log('🔍 Index: isAuthenticated:', isAuthenticated);
+      console.log('🔍 Index: userId:', userId);
+      
       if (!isAuthenticated || !userId) {
+        console.log('🔍 Index: Not authenticated or no userId, skipping check');
         return;
       }
 
+      console.log('🔍 Index: User is authenticated, checking assessment status...');
       setIsCheckingAssessment(true);
+      
       try {
+        console.log('🔍 Index: Calling PlanGenerationService.checkUserPlanStatus with userId:', userId);
         const hasCompleted = await PlanGenerationService.checkUserPlanStatus(userId);
+        console.log('🔍 Index: PlanGenerationService.checkUserPlanStatus returned:', hasCompleted);
+        
         if (hasCompleted) {
+          console.log('🔍 Index: User has completed assessment, navigating to dashboard');
           navigate("/dashboard");
+        } else {
+          console.log('🔍 Index: User has NOT completed assessment, staying on index page');
         }
       } catch (error) {
-        console.error('Error checking assessment status:', error);
+        console.error('🔍 Index: Error checking assessment status:', error);
       } finally {
+        console.log('🔍 Index: Assessment check completed, setting isCheckingAssessment to false');
         setIsCheckingAssessment(false);
       }
     };

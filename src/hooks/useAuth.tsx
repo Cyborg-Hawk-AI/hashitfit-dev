@@ -44,15 +44,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('🔍 useAuth: Auth state change event:', event);
+        console.log('🔍 useAuth: Session:', session);
+        
         const isAuthed = !!session;
+        console.log('🔍 useAuth: Setting isAuthenticated to:', isAuthed);
         setIsAuthenticated(isAuthed);
-        setUserId(session?.user.id || null);
+        
+        const sessionUserId = session?.user.id || null;
+        console.log('🔍 useAuth: Setting userId to:', sessionUserId);
+        setUserId(sessionUserId);
+        
         setIsLoading(false);
         
         // Sync user profile when authenticated
         if (isAuthed && session?.user.id) {
+          console.log('🔍 useAuth: User authenticated, fetching profile for userId:', session.user.id);
           fetchUserProfile(session.user.id);
         } else if (!isAuthed) {
+          console.log('🔍 useAuth: User not authenticated, clearing profile');
           // Clear user data when not authenticated
           setUserProfile(null);
         }
@@ -60,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Check initial session
+    console.log('🔍 useAuth: Checking initial session...');
     checkUser();
     
     return () => {
@@ -69,17 +80,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   async function checkUser() {
     try {
+      console.log('🔍 useAuth: checkUser - Getting session...');
       const { data: { session } } = await supabase.auth.getSession();
-      setIsAuthenticated(!!session);
-      setUserId(session?.user.id || null);
+      console.log('🔍 useAuth: checkUser - Session:', session);
+      
+      const isAuthed = !!session;
+      console.log('🔍 useAuth: checkUser - Setting isAuthenticated to:', isAuthed);
+      setIsAuthenticated(isAuthed);
+      
+      const sessionUserId = session?.user.id || null;
+      console.log('🔍 useAuth: checkUser - Setting userId to:', sessionUserId);
+      setUserId(sessionUserId);
       
       if (session?.user.id) {
+        console.log('🔍 useAuth: checkUser - Fetching profile for userId:', session.user.id);
         fetchUserProfile(session.user.id);
       }
       
       setIsLoading(false);
     } catch (error) {
-      console.error('Error checking auth user:', error);
+      console.error('🔍 useAuth: Error checking auth user:', error);
       setIsLoading(false);
     }
   }
