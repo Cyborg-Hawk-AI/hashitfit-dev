@@ -3,16 +3,43 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { ChevronRight, Dumbbell, Mic, User, Apple } from "lucide-react";
+import { ChevronRight, Dumbbell, Mic, User, Apple, Bug } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useAuth } from "@/hooks/useAuth";
 import { PlanGenerationService } from "@/lib/supabase/services/PlanGenerationService";
+import supabase from "@/lib/supabase";
 
 export default function Index() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { isAuthenticated, userId } = useAuth();
   const [isCheckingAssessment, setIsCheckingAssessment] = useState(false);
+
+  // Debug function to directly check database
+  const debugDatabase = async () => {
+    if (!userId) {
+      console.log('🔍 DEBUG: No userId available');
+      return;
+    }
+
+    console.log('🔍 DEBUG: Checking database directly for userId:', userId);
+    
+    try {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId);
+
+      console.log('🔍 DEBUG: Direct database query result:', { profiles, error });
+      
+      if (profiles && profiles.length > 0) {
+        console.log('🔍 DEBUG: Profile data:', profiles[0]);
+        console.log('🔍 DEBUG: has_completed_assessment:', profiles[0].has_completed_assessment);
+      }
+    } catch (error) {
+      console.error('🔍 DEBUG: Error querying database:', error);
+    }
+  };
 
   useEffect(() => {
     const checkAssessmentStatus = async () => {
@@ -81,14 +108,23 @@ export default function Index() {
           
           <div className="flex gap-3">
             {isAuthenticated ? (
-              <Button 
-                onClick={() => navigate("/dashboard")}
-                className="bg-hashim-600 hover:bg-hashim-700 text-white"
-                disabled={isCheckingAssessment}
-              >
-                {isCheckingAssessment ? "Checking..." : "Dashboard"}
-                <ChevronRight className="ml-1" size={16} />
-              </Button>
+              <>
+                <Button 
+                  onClick={() => navigate("/dashboard")}
+                  className="bg-hashim-600 hover:bg-hashim-700 text-white"
+                  disabled={isCheckingAssessment}
+                >
+                  {isCheckingAssessment ? "Checking..." : "Dashboard"}
+                  <ChevronRight className="ml-1" size={16} />
+                </Button>
+                <Button 
+                  onClick={debugDatabase}
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                >
+                  <Bug size={16} />
+                </Button>
+              </>
             ) : (
               <>
                 <Button 
