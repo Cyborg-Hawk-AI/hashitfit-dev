@@ -70,9 +70,9 @@ async function callNutritionAssistant(assistantId: string, openaiApiKey: string,
 
     // Poll for completion
     let attempts = 0
-    const maxAttempts = 45 // 45 seconds timeout
+    const maxAttempts = 120 // 120 seconds timeout (2 minutes)
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second
+      await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds between checks
       attempts++
 
       const statusResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs/${run.id}`, {
@@ -87,7 +87,7 @@ async function callNutritionAssistant(assistantId: string, openaiApiKey: string,
       }
 
       const runStatus = await statusResponse.json()
-      console.log(`Run status: ${runStatus.status}`)
+      console.log(`Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`)
 
       if (runStatus.status === 'completed') {
         // Get the messages

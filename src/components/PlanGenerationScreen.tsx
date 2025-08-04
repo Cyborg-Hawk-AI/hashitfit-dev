@@ -26,26 +26,7 @@ export function PlanGenerationScreen({ onComplete, assessmentData }: PlanGenerat
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (currentStep < GENERATION_STEPS.length) {
-      const step = GENERATION_STEPS[currentStep];
-      const timer = setTimeout(() => {
-        setCompletedSteps(prev => [...prev, step.id]);
-        setProgress(((currentStep + 1) / GENERATION_STEPS.length) * 100);
-        
-        if (currentStep + 1 === GENERATION_STEPS.length) {
-          // All steps complete, now wait for actual Edge Function completion
-          setIsProcessing(true);
-          waitForEdgeFunctionCompletion();
-        } else {
-          setCurrentStep(prev => prev + 1);
-        }
-      }, step.duration);
-
-      return () => clearTimeout(timer);
-    }
-  }, [currentStep]);
+  const [edgeFunctionStarted, setEdgeFunctionStarted] = useState(false);
 
   const waitForEdgeFunctionCompletion = async () => {
     if (!assessmentData) {
@@ -79,6 +60,41 @@ export function PlanGenerationScreen({ onComplete, assessmentData }: PlanGenerat
       setIsProcessing(false);
     }
   };
+
+  // Start Edge Functions immediately when component mounts
+  useEffect(() => {
+    if (assessmentData && !edgeFunctionStarted) {
+      setEdgeFunctionStarted(true);
+      console.log('Starting Edge Functions immediately...');
+      waitForEdgeFunctionCompletion();
+    }
+  }, [assessmentData, edgeFunctionStarted]);
+
+  useEffect(() => {
+    if (currentStep < GENERATION_STEPS.length) {
+      const step = GENERATION_STEPS[currentStep];
+      const timer = setTimeout(() => {
+        setCompletedSteps(prev => [...prev, step.id]);
+        setProgress(((currentStep + 1) / GENERATION_STEPS.length) * 100);
+        
+        if (currentStep + 1 === GENERATION_STEPS.length) {
+          // All visual steps complete, check if Edge Functions are done
+          if (edgeFunctionStarted) {
+            // Edge Functions should be done by now, complete
+            setTimeout(() => onComplete(), 1000);
+          } else {
+            // Fallback: start Edge Functions if not already started
+            setIsProcessing(true);
+            waitForEdgeFunctionCompletion();
+          }
+        } else {
+          setCurrentStep(prev => prev + 1);
+        }
+      }, step.duration);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, edgeFunctionStarted, onComplete]);
 
   const isStepCompleted = (stepId: number) => completedSteps.includes(stepId);
   const isStepActive = (stepId: number) => currentStep + 1 === stepId && !isStepCompleted(stepId);

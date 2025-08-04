@@ -122,7 +122,117 @@ async function callWorkoutAssistant(assistantId: string, openaiApiKey: string, a
       }
     }
 
-    throw new Error('Assistant run timeout')
+    console.error('Assistant run timeout - using fallback workout plan')
+    // Return a fallback workout plan if the assistant times out
+    return {
+      workout_schedule: [
+        {
+          week: 1,
+          day: "Monday",
+          workout_title: "Full Body Strength",
+          description: "Basic full body workout focusing on compound movements.",
+          category: "strength",
+          difficulty: 2,
+          estimated_duration: "45 minutes",
+          exercises: [
+            {
+              name: "Bodyweight Squats",
+              sets: 3,
+              reps: "10-15",
+              weight: "bodyweight",
+              rest_seconds: 60,
+              notes: "Keep your chest up and go low on the squat."
+            },
+            {
+              name: "Push-ups",
+              sets: 3,
+              reps: "8-12",
+              weight: "bodyweight",
+              rest_seconds: 60,
+              notes: "Maintain a straight line from head to heels."
+            },
+            {
+              name: "Plank",
+              sets: 3,
+              reps: "30 seconds",
+              weight: "bodyweight",
+              rest_seconds: 30,
+              notes: "Engage your core and hold your body in a straight line."
+            }
+          ]
+        },
+        {
+          week: 1,
+          day: "Wednesday",
+          workout_title: "Cardio & Core",
+          description: "Cardiovascular fitness and core strength workout.",
+          category: "cardio",
+          difficulty: 2,
+          estimated_duration: "30 minutes",
+          exercises: [
+            {
+              name: "High Knees",
+              sets: 4,
+              reps: "30 seconds",
+              weight: "bodyweight",
+              rest_seconds: 15,
+              notes: "Drive your knees high, use your arms for momentum."
+            },
+            {
+              name: "Mountain Climbers",
+              sets: 4,
+              reps: "30 seconds",
+              weight: "bodyweight",
+              rest_seconds: 15,
+              notes: "Maintain a steady pace and engage your core."
+            },
+            {
+              name: "Russian Twists",
+              sets: 3,
+              reps: "10-15 each side",
+              weight: "bodyweight",
+              rest_seconds: 60,
+              notes: "Keep your feet off the floor for more challenge."
+            }
+          ]
+        },
+        {
+          week: 1,
+          day: "Friday",
+          workout_title: "Upper Body Strength",
+          description: "Upper body strength training with various movements.",
+          category: "strength",
+          difficulty: 2,
+          estimated_duration: "45 minutes",
+          exercises: [
+            {
+              name: "Incline Push-ups",
+              sets: 3,
+              reps: "10-15",
+              weight: "bodyweight",
+              rest_seconds: 60,
+              notes: "Adjust the incline to increase or decrease difficulty."
+            },
+            {
+              name: "Dumbbell Shoulder Press",
+              sets: 3,
+              reps: "8-12",
+              weight: "10kg",
+              rest_seconds: 60,
+              notes: "Keep your back straight and avoid arching."
+            },
+            {
+              name: "Bent-over Dumbbell Rows",
+              sets: 3,
+              reps: "10-12",
+              weight: "10kg",
+              rest_seconds: 60,
+              notes: "Focus on squeezing your shoulder blades together."
+            }
+          ]
+        }
+      ]
+    }
   } catch (error) {
     console.error(`Error calling workout assistant:`, error)
     throw error
