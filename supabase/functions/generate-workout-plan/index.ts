@@ -297,20 +297,27 @@ serve(async (req) => {
     }
     
     // Check if we have the new multi-assistant setup or fall back to single assistant
-    // For now, let's use single assistant until multi-assistant IDs are properly configured
-    const useMultiAssistant = false // Temporarily disable multi-assistant
+    const workoutAssistantId = Deno.env.get('OPENAI_ASSISTANT_WORKOUT_ID')
+    const nutritionAssistantId = Deno.env.get('OPENAI_ASSISTANT_NUTRITION_ID')
+    const recommendationsAssistantId = Deno.env.get('OPENAI_ASSISTANT_RECOMMENDATIONS_ID')
     const singleAssistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
     
-    if (!singleAssistantId) {
-      console.error('Missing Single Assistant ID')
-      throw new Error('Missing Assistant ID')
-    }
-
-    console.log('Using single assistant architecture (temporarily)')
-    console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
+    // Check if we have all three multi-assistant IDs
+    const useMultiAssistant = workoutAssistantId && nutritionAssistantId && recommendationsAssistantId
     
-    // Log the full assistant ID for debugging
-    console.log('Full Assistant ID for debugging:', singleAssistantId)
+    if (useMultiAssistant) {
+      console.log('Using multi-assistant architecture')
+      console.log('Workout Assistant ID:', workoutAssistantId?.substring(0, 10) + '...')
+      console.log('Nutrition Assistant ID:', nutritionAssistantId?.substring(0, 10) + '...')
+      console.log('Recommendations Assistant ID:', recommendationsAssistantId?.substring(0, 10) + '...')
+    } else {
+      console.log('Using single assistant architecture (fallback)')
+      if (!singleAssistantId) {
+        console.error('Missing Single Assistant ID')
+        throw new Error('Missing Assistant ID')
+      }
+      console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
+    }
 
     // Format the raw assessment data for the assistants
     const rawAssessmentData = {
