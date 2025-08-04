@@ -2,14 +2,6 @@ m#### 📌 Objective
 
 You are contributing to the **HashimFit AI-powered personal fitness trainer**. This project is an advanced full-stack web app using Supabase, OpenAI, AWS, and modern frontend frameworks. It includes features like voice workout logging, AI plan generation, photo-based meal tracking, and real-time coaching.
 
----
-
-### 🚫 CLI Instructions
-
-> ⚠️ **DO NOT use the local Supabase CLI** for running functions or accessing the database.
-> The local CLI is linked to a **different project**, and misusing it may corrupt unrelated environments.
-
-* If any changes are needed in supabase, generate the sql query for me to use manually in your response. 
 
 ---
 
