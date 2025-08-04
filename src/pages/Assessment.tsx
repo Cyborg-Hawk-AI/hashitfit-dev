@@ -15,8 +15,9 @@ export default function Assessment() {
   const [showPlanGeneration, setShowPlanGeneration] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assessmentData, setAssessmentData] = useState<any>(null);
 
-  const handleComplete = async () => {
+  const handleComplete = async (data?: any) => {
     try {
       if (!userId) {
         toast({
@@ -30,6 +31,11 @@ export default function Assessment() {
       setIsProcessing(true);
       setError(null);
       console.log("Assessment completed, showing plan generation screen");
+      
+      // Store the assessment data
+      if (data) {
+        setAssessmentData(data);
+      }
       
       // Immediately show the plan generation screen
       setShowPlanGeneration(true);
@@ -54,7 +60,7 @@ export default function Assessment() {
   };
 
   if (showPlanGeneration) {
-    return <PlanGenerationScreen onComplete={handlePlanGenerationComplete} />;
+    return <PlanGenerationScreen onComplete={handlePlanGenerationComplete} assessmentData={assessmentData} />;
   }
 
   return (

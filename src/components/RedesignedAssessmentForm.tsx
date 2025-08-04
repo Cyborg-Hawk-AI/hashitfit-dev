@@ -43,7 +43,7 @@ const DEFAULT_VALUES: FormSchemaType = {
 };
 
 interface RedesignedAssessmentFormProps {
-  onComplete: () => void;
+  onComplete: (data?: any) => void;
   isProcessing?: boolean;
 }
 
@@ -135,19 +135,7 @@ export function RedesignedAssessmentForm({ onComplete, isProcessing = false }: R
       console.log('Submitting assessment data:', assessmentData);
       
       // Trigger plan generation immediately and show loading screen
-      onComplete();
-      
-      // Generate the plan in the background - this will take some time
-      setTimeout(async () => {
-        try {
-          await PlanGenerationService.generateFitnessPlan(assessmentData);
-          console.log('Plan generation completed successfully');
-        } catch (error) {
-          console.error('Error generating fitness plan:', error);
-          // The user will already be on the loading screen, so we don't show errors here
-          // The loading screen will complete and redirect to dashboard anyway
-        }
-      }, 100);
+      onComplete(assessmentData);
       
     } catch (error: any) {
       console.error("Error in assessment submission:", error);

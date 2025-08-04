@@ -8,6 +8,7 @@ import { Logo } from "@/components/Logo";
 
 interface PlanGenerationScreenProps {
   onComplete: () => void;
+  assessmentData?: any; // Add assessment data prop
 }
 
 const GENERATION_STEPS = [
@@ -19,10 +20,12 @@ const GENERATION_STEPS = [
   { id: 6, text: "✅ Syncing your dashboard", duration: 1000 },
 ];
 
-export function PlanGenerationScreen({ onComplete }: PlanGenerationScreenProps) {
+export function PlanGenerationScreen({ onComplete, assessmentData }: PlanGenerationScreenProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [progress, setProgress] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentStep < GENERATION_STEPS.length) {
@@ -32,10 +35,9 @@ export function PlanGenerationScreen({ onComplete }: PlanGenerationScreenProps) 
         setProgress(((currentStep + 1) / GENERATION_STEPS.length) * 100);
         
         if (currentStep + 1 === GENERATION_STEPS.length) {
-          // All steps complete, wait a moment then redirect
-          setTimeout(() => {
-            onComplete();
-          }, 1000);
+          // All steps complete, now wait for actual Edge Function completion
+          setIsProcessing(true);
+          waitForEdgeFunctionCompletion();
         } else {
           setCurrentStep(prev => prev + 1);
         }
@@ -43,7 +45,40 @@ export function PlanGenerationScreen({ onComplete }: PlanGenerationScreenProps) 
 
       return () => clearTimeout(timer);
     }
-  }, [currentStep, onComplete]);
+  }, [currentStep]);
+
+  const waitForEdgeFunctionCompletion = async () => {
+    if (!assessmentData) {
+      // No assessment data, just complete
+      setTimeout(() => onComplete(), 1000);
+      return;
+    }
+
+    try {
+      // Import the service dynamically to avoid circular dependencies
+      const { PlanGenerationService } = await import('@/lib/supabase/services/PlanGenerationService');
+      
+      console.log('Waiting for Edge Function to complete...');
+      const result = await PlanGenerationService.generateFitnessPlan(assessmentData);
+      
+      if (result.success) {
+        console.log('Edge Function completed successfully');
+        setTimeout(() => onComplete(), 1000);
+      } else {
+        console.error('Edge Function failed:', result.error);
+        setError(result.error || 'Failed to generate plan');
+        // Still complete after a delay to let user see the error
+        setTimeout(() => onComplete(), 3000);
+      }
+    } catch (error) {
+      console.error('Error waiting for Edge Function:', error);
+      setError('Failed to generate plan, but your assessment has been saved');
+      // Still complete after a delay to let user see the error
+      setTimeout(() => onComplete(), 3000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const isStepCompleted = (stepId: number) => completedSteps.includes(stepId);
   const isStepActive = (stepId: number) => currentStep + 1 === stepId && !isStepCompleted(stepId);
