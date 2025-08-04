@@ -1,0 +1,252 @@
+
+// Supabase Edge Function for OpenAI Assistant
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.21.0'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Create a Supabase client with the Auth context of the logged in user
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      throw new Error('Missing Authorization header')
+    }
+
+    const supabaseClient = createClient(
+      // Supabase API URL - env var exposed by default.
+      Deno.env.get('SUPABASE_URL') ?? '',
+      // Supabase API ANON KEY - env var exposed by default.
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      // Create client with Auth header of the user that called the function.
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
+    )
+
+    // Get logged in user data
+    const {
+      data: { user },
+    } = await supabaseClient.auth.getUser()
+
+    if (!user) {
+      throw new Error('No user found')
+    }
+
+    // Get the request body
+    const { message } = await req.json()
+    
+    // Get API key and Assistant ID from environment
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const assistantId = Deno.env.get('OPENAI_ASSISTANT_ID')
+    
+    if (!openaiApiKey) {
+      throw new Error('Missing OpenAI API Key')
+    }
+    
+    if (!assistantId) {
+      throw new Error('Missing OpenAI Assistant ID')
+    }
+
+    console.log(`Processing message for user ${user.id} using assistant ${assistantId}`)
+    
+    // Step 1: Create or retrieve a thread for this user
+    let threadId = null
+    
+    // Check if user has an existing thread
+    const { data: threadData } = await supabaseClient
+      .from('user_assistant_threads')
+      .select('thread_id')
+      .eq('user_id', user.id)
+      .single()
+    
+    if (threadData?.thread_id) {
+      threadId = threadData.thread_id
+      console.log(`Using existing thread: ${threadId}`)
+    } else {
+      // Create a new thread
+      const threadResponse = await fetch('https://api.openai.com/v1/threads', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'assistants=v1'
+        },
+        body: JSON.stringify({})
+      })
+      
+      if (!threadResponse.ok) {
+        const errorText = await threadResponse.text()
+        throw new Error(`Failed to create thread: ${errorText}`)
+      }
+      
+      const threadResult = await threadResponse.json()
+      threadId = threadResult.id
+      console.log(`Created new thread: ${threadId}`)
+      
+      // Save the thread ID for this user
+      await supabaseClient
+        .from('user_assistant_threads')
+        .insert({
+          user_id: user.id,
+          thread_id: threadId,
+          created_at: new Date().toISOString()
+        })
+    }
+    
+    // Step 2: Add the user message to the thread
+    const messageResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Beta': 'assistants=v1'
+      },
+      body: JSON.stringify({
+        role: 'user',
+        content: message
+      })
+    })
+    
+    if (!messageResponse.ok) {
+      const errorText = await messageResponse.text()
+      throw new Error(`Failed to add message to thread: ${errorText}`)
+    }
+    
+    // Step 3: Run the assistant on the thread
+    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Beta': 'assistants=v1'
+      },
+      body: JSON.stringify({
+        assistant_id: assistantId,
+      })
+    })
+    
+    if (!runResponse.ok) {
+      const errorText = await runResponse.text()
+      throw new Error(`Failed to run assistant: ${errorText}`)
+    }
+    
+    const runResult = await runResponse.json()
+    const runId = runResult.id
+    
+    // Step 4: Wait for the run to complete
+    let runStatus = runResult.status
+    let attempts = 0
+    const maxAttempts = 60  // Maximum wait time: 60 seconds
+    
+    while (runStatus !== 'completed' && runStatus !== 'failed' && attempts < maxAttempts) {
+      // Wait for 1 second before checking again
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const runCheckResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'OpenAI-Beta': 'assistants=v1'
+        }
+      })
+      
+      if (!runCheckResponse.ok) {
+        const errorText = await runCheckResponse.text()
+        throw new Error(`Failed to check run status: ${errorText}`)
+      }
+      
+      const runCheckResult = await runCheckResponse.json()
+      runStatus = runCheckResult.status
+      console.log(`Run status: ${runStatus}`)
+      attempts++
+    }
+    
+    if (runStatus !== 'completed') {
+      throw new Error(`Run did not complete in time: ${runStatus}`)
+    }
+    
+    // Step 5: Retrieve the assistant's messages
+    const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages?limit=1`, {
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'OpenAI-Beta': 'assistants=v1'
+      }
+    })
+    
+    if (!messagesResponse.ok) {
+      const errorText = await messagesResponse.text()
+      throw new Error(`Failed to retrieve messages: ${errorText}`)
+    }
+    
+    const messagesResult = await messagesResponse.json()
+    const assistantMessage = messagesResult.data.find(m => m.role === 'assistant')
+    
+    if (!assistantMessage) {
+      throw new Error('No assistant message found')
+    }
+    
+    const assistantResponse = assistantMessage.content[0].text.value
+    
+    // Log the chat message to the database
+    const { data: userMessageData, error: userMessageError } = await supabaseClient
+      .from('chat_messages')
+      .insert({
+        user_id: user.id,
+        content: message,
+        role: 'user',
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+    
+    if (userMessageError) throw userMessageError
+    
+    // Log the AI response
+    const { data: aiMessageData, error: aiMessageError } = await supabaseClient
+      .from('chat_messages')
+      .insert({
+        user_id: user.id,
+        content: assistantResponse,
+        role: 'assistant',
+        created_at: new Date().toISOString(),
+        thread_id: threadId,
+        run_id: runId
+      })
+      .select()
+      .single()
+    
+    if (aiMessageError) throw aiMessageError
+
+    return new Response(
+      JSON.stringify({
+        message: assistantResponse,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    )
+  } catch (error) {
+    console.error('Error in AI chat function:', error)
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      }
+    )
+  }
+})

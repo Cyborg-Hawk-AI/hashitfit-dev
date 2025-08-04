@@ -1,0 +1,302 @@
+
+// Supabase Edge Function to analyze fitness assessment and generate personalized plans
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Get the request body
+    let requestData;
+    try {
+      requestData = await req.json();
+      console.log("Received assessment data:", JSON.stringify(requestData, null, 2));
+    } catch (parseError) {
+      console.error("Failed to parse request body:", parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    const { user_id, assessment } = requestData;
+    
+    if (!user_id || !assessment) {
+      console.error("Missing required fields in request");
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: user_id or assessment data' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Prepare the prompt for OpenAI
+    const prompt = `
+      Create a personalized fitness plan based on the following assessment:
+      Age: ${assessment.age}
+      Gender: ${assessment.gender}
+      Height: ${assessment.height}cm
+      Weight: ${assessment.weight}kg
+      Fitness Goal: ${assessment.fitnessGoal}
+      Workout Frequency: ${assessment.workoutFrequency} days/week
+      Diet Type: ${assessment.diet}
+      Available Equipment: ${assessment.equipment}
+      Sports Played: ${assessment.sportsPlayed?.join(', ') || 'None'}
+      Allergies: ${assessment.allergies?.join(', ') || 'None'}
+      
+      Create a complete fitness plan with:
+      1. 2-3 weekly workout plans (based on their frequency preference)
+      2. A nutrition plan with daily meal suggestions
+      3. 3-5 personalized recommendations
+      
+      Format your response exactly as a JSON object with this structure:
+      {
+        "workout_plans": [
+          {
+            "day": "Monday",
+            "title": "Upper Body Strength",
+            "description": "Focus on chest, shoulders, and arms",
+            "category": "strength",
+            "exercises": [
+              {
+                "name": "Exercise Name",
+                "sets": 3,
+                "reps": "8-10",
+                "weight": "60kg",
+                "rest_time": 90
+              }
+            ]
+          }
+        ],
+        "nutrition_plan": {
+          "daily_calories": 2400,
+          "protein_g": 180,
+          "carbs_g": 220,
+          "fat_g": 80,
+          "diet_type": "standard",
+          "meals": [
+            {
+              "meal_type": "breakfast",
+              "meal_title": "Protein Oatmeal",
+              "description": "Oats with protein powder and fruit",
+              "calories": 450,
+              "protein_g": 35,
+              "carbs_g": 50,
+              "fat_g": 10
+            }
+          ]
+        },
+        "recommendations": [
+          "Stay hydrated throughout the day",
+          "Get 7-9 hours of sleep for optimal recovery"
+        ]
+      }
+      
+      Ensure "category" is one of: strength, cardio, hiit, recovery, sport_specific, custom
+      For "meal_type" use one of: breakfast, lunch, dinner, snack
+      For "diet_type" use one of: standard, vegetarian, vegan, keto, paleo, gluten_free
+    `;
+
+    try {
+      // Call OpenAI API if key exists
+      if (OPENAI_API_KEY) {
+        console.log("Calling OpenAI API");
+        const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system', 
+                content: 'You are a fitness expert specialized in creating personalized workout and nutrition plans.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.7,
+            response_format: { type: "json_object" }
+          })
+        });
+        
+        if (!openAIResponse.ok) {
+          const errorText = await openAIResponse.text();
+          console.error("OpenAI API error:", errorText);
+          throw new Error(`OpenAI API error: ${openAIResponse.status}`);
+        }
+        
+        const data = await openAIResponse.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+          throw new Error("Invalid response from OpenAI");
+        }
+        
+        const generatedPlan = JSON.parse(data.choices[0].message.content);
+        console.log("Generated plan from OpenAI:");
+        
+        return new Response(
+          JSON.stringify(generatedPlan),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      } else {
+        // If no API key, use mock data
+        console.log("No OpenAI API key found. Returning mock data.");
+        const mockResponse = generateMockResponse();
+        return new Response(
+          JSON.stringify(mockResponse),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    } catch (aiError) {
+      console.error("Error calling OpenAI:", aiError);
+      // Fallback to mock data if API call fails
+      console.log("Falling back to mock data due to API error");
+      const mockResponse = generateMockResponse();
+      return new Response(
+        JSON.stringify(mockResponse),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+  } catch (error) {
+    console.error('General error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message, 
+        details: 'An unexpected error occurred while processing the fitness assessment'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    )
+  }
+})
+
+// Generate a mock response for testing/development or fallback
+function generateMockResponse() {
+  return {
+    workout_plans: [
+      {
+        day: "Monday",
+        title: "Upper Body Strength",
+        description: "Focus on building upper body strength",
+        category: "strength",
+        exercises: [
+          {
+            name: "Bench Press",
+            sets: 3,
+            reps: "8-10",
+            weight: "60kg",
+            rest_time: 90
+          },
+          {
+            name: "Shoulder Press",
+            sets: 3,
+            reps: "8-10",
+            weight: "40kg",
+            rest_time: 90
+          },
+          {
+            name: "Bicep Curls",
+            sets: 3,
+            reps: "10-12",
+            weight: "15kg",
+            rest_time: 60
+          }
+        ]
+      },
+      {
+        day: "Thursday",
+        title: "Lower Body Power",
+        description: "Focus on building lower body strength and power",
+        category: "strength",
+        exercises: [
+          {
+            name: "Squats",
+            sets: 4,
+            reps: "6-8",
+            weight: "80kg",
+            rest_time: 120
+          },
+          {
+            name: "Leg Press",
+            sets: 3,
+            reps: "8-10",
+            weight: "120kg",
+            rest_time: 90
+          },
+          {
+            name: "Leg Curls",
+            sets: 3,
+            reps: "10-12",
+            weight: "40kg",
+            rest_time: 60
+          }
+        ]
+      }
+    ],
+    nutrition_plan: {
+      daily_calories: 2200,
+      protein_g: 170,
+      carbs_g: 50,
+      fat_g: 160,
+      diet_type: "standard",
+      meals: [
+        {
+          meal_type: "breakfast",
+          meal_title: "High Protein Breakfast",
+          description: "Eggs and whole grain toast",
+          calories: 550,
+          protein_g: 35,
+          carbs_g: 8,
+          fat_g: 45
+        },
+        {
+          meal_type: "lunch",
+          meal_title: "Grilled Chicken Salad",
+          description: "Grilled chicken with mixed greens",
+          calories: 650,
+          protein_g: 45,
+          carbs_g: 12,
+          fat_g: 48
+        },
+        {
+          meal_type: "dinner",
+          meal_title: "Baked Salmon",
+          description: "Baked salmon with vegetables",
+          calories: 750,
+          protein_g: 60,
+          carbs_g: 15,
+          fat_g: 52
+        },
+        {
+          meal_type: "snack",
+          meal_title: "Protein Shake",
+          description: "Protein shake with almond milk",
+          calories: 250,
+          protein_g: 20,
+          carbs_g: 5,
+          fat_g: 15
+        }
+      ]
+    },
+    recommendations: [
+      "Stay hydrated with plenty of water throughout the day",
+      "Ensure you're getting 7-8 hours of quality sleep",
+      "Focus on progressive overload in your strength training",
+      "Include a protein source with every meal",
+      "Track your progress weekly"
+    ]
+  };
+}

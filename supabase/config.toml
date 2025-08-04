@@ -1,0 +1,35 @@
+
+project_id = "haxiwqgajhanpapvicbm"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost"
+
+# JWT verification is enabled for this function
+[functions.analyze-meal-photo]
+verify_jwt = true
+
+# JWT verification is enabled for this function
+[functions.voice-workout-parser]
+verify_jwt = true
