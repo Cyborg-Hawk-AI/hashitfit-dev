@@ -33,10 +33,19 @@ export interface PlanGenerationResponse {
 export class PlanGenerationService {
   static async generateFitnessPlan(assessmentData: AssessmentData): Promise<PlanGenerationResponse> {
     try {
-      console.log('Calling generate-workout-plan Edge Function with data:', assessmentData);
+      console.log('Calling analyze-fitness-assessment Edge Function with data:', assessmentData);
       
-      const { data, error } = await supabase.functions.invoke<PlanGenerationResponse>('generate-workout-plan', {
-        body: assessmentData,
+      // Get the current user ID from the session
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('No authenticated user found');
+      }
+      
+      const { data, error } = await supabase.functions.invoke<PlanGenerationResponse>('analyze-fitness-assessment', {
+        body: {
+          user_id: user.id,
+          assessment: assessmentData
+        },
       });
 
       if (error) {
@@ -49,7 +58,23 @@ export class PlanGenerationService {
       }
 
       console.log('Plan generation response:', data);
-      return data;
+      
+      // The analyze-fitness-assessment function returns the data directly
+      // We need to wrap it in a success format for the frontend
+      const rawData = data as any; // Type assertion for the raw response
+      return {
+        success: true,
+        message: 'Fitness plan generated successfully',
+        data: {
+          workout_plans: rawData.workout_plans?.length || 0,
+          nutrition_plan: rawData.nutrition_plan ? 'Generated' : 'Not generated',
+          recommendations: {
+            workout_tips: rawData.recommendations?.[0] || '',
+            nutrition_tips: rawData.recommendations?.[1] || '',
+            weekly_goals: rawData.recommendations?.[2] || ''
+          }
+        }
+      };
     } catch (error) {
       console.error('Error calling plan generation service:', error);
       throw error;
