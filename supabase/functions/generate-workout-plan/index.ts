@@ -6,6 +6,235 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Interface for assistant responses
+interface WorkoutResponse {
+  workout_schedule: Array<{
+    week: number
+    day: string
+    workout_title: string
+    description: string
+    category: string
+    difficulty: number
+    estimated_duration: string
+    exercises: Array<{
+      name: string
+      sets: number
+      reps: string
+      weight: string
+      rest_seconds: number
+      notes?: string
+    }>
+  }>
+}
+
+interface NutritionResponse {
+  nutrition_plan: {
+    daily_calories: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    diet_type: string
+    meals: Array<{
+      meal_type: string
+      meal_title: string
+      description: string
+      calories: number
+      protein_g: number
+      carbs_g: number
+      fat_g: number
+    }>
+  }
+}
+
+interface RecommendationsResponse {
+  recommendations: {
+    workout_tips: string
+    nutrition_tips: string
+    weekly_goals: string
+  }
+}
+
+// Helper function to call a single assistant
+async function callAssistant(
+  assistantId: string,
+  openaiApiKey: string,
+  assessmentData: any,
+  assistantType: 'workout' | 'nutrition' | 'recommendations' | 'single'
+): Promise<any> {
+  console.log(`Calling ${assistantType} assistant:`, assistantId.substring(0, 10) + '...')
+
+  // Create thread
+  const threadResponse = await fetch('https://api.openai.com/v1/threads', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json',
+      'OpenAI-Beta': 'assistants=v2',
+    },
+    body: JSON.stringify({}),
+  })
+
+  if (!threadResponse.ok) {
+    const errorText = await threadResponse.text()
+    throw new Error(`Thread creation error for ${assistantType}: ${threadResponse.status} - ${errorText}`)
+  }
+
+  const threadData = await threadResponse.json()
+  const threadId = threadData.id
+  console.log(`Created thread for ${assistantType}:`, threadId)
+
+  // Add message to thread
+  const messageContent = `${JSON.stringify(assessmentData)}
+
+CRITICAL: Respond with ONLY valid JSON in the exact format specified in your instructions. No markdown, no explanations, no text formatting - just pure JSON that can be parsed directly.`
+
+  const messageResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json',
+      'OpenAI-Beta': 'assistants=v2',
+    },
+    body: JSON.stringify({
+      role: 'user',
+      content: messageContent
+    }),
+  })
+
+  if (!messageResponse.ok) {
+    const errorText = await messageResponse.text()
+    throw new Error(`Message creation error for ${assistantType}: ${messageResponse.status} - ${errorText}`)
+  }
+
+  console.log(`Added message to thread for ${assistantType}`)
+
+  // Run the assistant
+  const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json',
+      'OpenAI-Beta': 'assistants=v2',
+    },
+    body: JSON.stringify({
+      assistant_id: assistantId,
+      additional_instructions: "You must respond with ONLY valid JSON. No markdown formatting, no explanations, no additional text. Just pure JSON that can be parsed directly by JSON.parse()."
+    }),
+  })
+
+  if (!runResponse.ok) {
+    const errorText = await runResponse.text()
+    throw new Error(`Run creation error for ${assistantType}: ${runResponse.status} - ${errorText}`)
+  }
+
+  const runData = await runResponse.json()
+  const runId = runData.id
+  console.log(`Started run for ${assistantType}:`, runId)
+
+  // Poll for completion
+  let runStatus = 'in_progress'
+  let attempts = 0
+  const maxAttempts = 30 // 30 seconds timeout per assistant
+
+  while (runStatus === 'in_progress' || runStatus === 'queued') {
+    if (attempts >= maxAttempts) {
+      throw new Error(`${assistantType} assistant run timeout after ${maxAttempts} seconds`)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second
+    
+    const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        'OpenAI-Beta': 'assistants=v2',
+      },
+    })
+
+    if (!statusResponse.ok) {
+      throw new Error(`Status check error for ${assistantType}: ${statusResponse.status}`)
+    }
+
+    const statusData = await statusResponse.json()
+    runStatus = statusData.status
+    attempts++
+    
+    console.log(`${assistantType} run status: ${runStatus} (attempt ${attempts})`)
+  }
+
+  if (runStatus !== 'completed') {
+    throw new Error(`${assistantType} assistant run failed with status: ${runStatus}`)
+  }
+
+  // Get the messages from the thread
+  const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      'OpenAI-Beta': 'assistants=v2',
+    },
+  })
+
+  if (!messagesResponse.ok) {
+    const errorText = await messagesResponse.text()
+    throw new Error(`Messages retrieval error for ${assistantType}: ${messagesResponse.status} - ${errorText}`)
+  }
+
+  const messagesData = await messagesResponse.json()
+  console.log(`Retrieved messages from thread for ${assistantType}`)
+
+  // Get the assistant's response (first message from assistant)
+  const assistantMessage = messagesData.data.find((msg: any) => msg.role === 'assistant')
+  
+  if (!assistantMessage || !assistantMessage.content || !assistantMessage.content[0]) {
+    throw new Error(`No response from ${assistantType} assistant`)
+  }
+
+  const rawContent = assistantMessage.content[0].text.value
+  console.log(`Raw content from ${assistantType} assistant:`, rawContent.substring(0, 200) + '...')
+
+  let parsedData
+  try {
+    // Enhanced JSON cleaning to handle various response formats
+    let cleanedContent = rawContent.trim()
+    
+    // Remove any markdown code block indicators if present
+    cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+    cleanedContent = cleanedContent.replace(/^```\s*/, '').replace(/\s*```$/, '')
+    
+    // Remove any leading/trailing text that isn't JSON
+    const jsonStartIndex = cleanedContent.indexOf('{')
+    const jsonEndIndex = cleanedContent.lastIndexOf('}')
+    
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+      cleanedContent = cleanedContent.substring(jsonStartIndex, jsonEndIndex + 1)
+    }
+    
+    console.log(`Cleaned content for ${assistantType} parsing:`, cleanedContent.substring(0, 200) + '...')
+    
+    // Try to parse the cleaned JSON
+    parsedData = JSON.parse(cleanedContent)
+    console.log(`Successfully parsed ${assistantType} data:`, parsedData)
+  } catch (parseError) {
+    console.error(`JSON parse error for ${assistantType}:`, parseError)
+    console.error(`Failed to parse ${assistantType} content:`, rawContent)
+    
+    // If parsing fails, try to extract JSON using a more aggressive approach
+    try {
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        parsedData = JSON.parse(jsonMatch[0])
+        console.log(`Successfully parsed ${assistantType} data using regex extraction:`, parsedData)
+      } else {
+        throw new Error(`No valid JSON found in ${assistantType} response`)
+      }
+    } catch (secondParseError) {
+      console.error(`Second parse attempt failed for ${assistantType}:`, secondParseError)
+      throw new Error(`Failed to parse ${assistantType} assistant response as JSON: ${parseError.message}. Raw response: ${rawContent.substring(0, 500)}...`)
+    }
+  }
+
+  return parsedData
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -56,26 +285,36 @@ serve(async (req) => {
     const assessmentData = await req.json()
     console.log('Received assessment data:', assessmentData)
 
-    // Use the assessments-specific API key
+    // Get API key and assistant IDs
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY_ASSESSMENTS')
-    const assistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
+    const workoutAssistantId = Deno.env.get('OPENAI_ASSISTANT_WORKOUT_ID')
+    const nutritionAssistantId = Deno.env.get('OPENAI_ASSISTANT_NUTRITION_ID')
+    const recommendationsAssistantId = Deno.env.get('OPENAI_ASSISTANT_RECOMMENDATIONS_ID')
     
     if (!openaiApiKey) {
-      console.error('Missing OpenAI Assessment API Key')
-      throw new Error('Missing OpenAI Assessment API Key')
+      console.error('Missing OpenAI API Key')
+      throw new Error('Missing OpenAI API Key')
     }
     
-    if (!assistantId) {
-      console.error('Missing OpenAI Assistant ID')
-      throw new Error('Missing OpenAI Assistant ID')
+    // Check if we have the new multi-assistant setup or fall back to single assistant
+    const useMultiAssistant = workoutAssistantId && nutritionAssistantId && recommendationsAssistantId
+    const singleAssistantId = Deno.env.get('OPENAI_ASSISTANT_ASSESSMENT_ID')
+    
+    if (!useMultiAssistant && !singleAssistantId) {
+      console.error('Missing Assistant IDs - neither multi-assistant nor single assistant configured')
+      throw new Error('Missing Assistant IDs')
     }
 
-    // Log the assistant ID being used (first 10 chars for security)
-    console.log('Using Assistant ID:', assistantId.substring(0, 10) + '...')
-    console.log('Full Assistant ID for debugging:', assistantId)
-    console.log('Using API Key (first 10 chars):', openaiApiKey.substring(0, 10) + '...')
+    console.log('Using multi-assistant architecture:', useMultiAssistant)
+    if (useMultiAssistant) {
+      console.log('Workout Assistant ID:', workoutAssistantId?.substring(0, 10) + '...')
+      console.log('Nutrition Assistant ID:', nutritionAssistantId?.substring(0, 10) + '...')
+      console.log('Recommendations Assistant ID:', recommendationsAssistantId?.substring(0, 10) + '...')
+    } else {
+      console.log('Single Assistant ID:', singleAssistantId?.substring(0, 10) + '...')
+    }
 
-    // Format the raw assessment data for the assistant
+    // Format the raw assessment data for the assistants
     const rawAssessmentData = {
       age: parseInt(assessmentData.age),
       gender: assessmentData.gender,
@@ -89,7 +328,7 @@ serve(async (req) => {
       allergies: assessmentData.allergies || []
     }
 
-    console.log('Sending raw assessment data to OpenAI Assistant:', JSON.stringify(rawAssessmentData))
+    console.log('Sending raw assessment data to assistants:', JSON.stringify(rawAssessmentData))
 
     // Update user profile to mark assessment as completed IMMEDIATELY
     // This ensures the user can access the dashboard even if AI processing fails
@@ -163,366 +402,246 @@ serve(async (req) => {
 
     console.log('Assessment data stored successfully')
 
-    // First, let's verify the assistant exists by trying to retrieve it
-    console.log('Verifying assistant exists...')
-    const assistantVerifyResponse = await fetch(`https://api.openai.com/v1/assistants/${assistantId}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'OpenAI-Beta': 'assistants=v2',
-      },
-    })
+    // Initialize response data
+    let workoutData: any = null
+    let nutritionData: any = null
+    let recommendationsData: any = null
 
-    if (!assistantVerifyResponse.ok) {
-      const errorText = await assistantVerifyResponse.text()
-      console.error('Assistant verification failed:', assistantVerifyResponse.status, errorText)
-      throw new Error(`Assistant verification failed: ${assistantVerifyResponse.status} - ${errorText}`)
-    }
-
-    const assistantData = await assistantVerifyResponse.json()
-    console.log('Assistant verified successfully. Name:', assistantData.name)
-
-    // Create a thread for the assistant
-    const threadResponse = await fetch('https://api.openai.com/v1/threads', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': 'assistants=v2',
-      },
-      body: JSON.stringify({}),
-    })
-
-    if (!threadResponse.ok) {
-      const errorText = await threadResponse.text()
-      console.error('Thread creation error:', threadResponse.status, errorText)
-      throw new Error(`Thread creation error: ${threadResponse.status} - ${errorText}`)
-    }
-
-    const threadData = await threadResponse.json()
-    const threadId = threadData.id
-    console.log('Created thread:', threadId)
-
-    // Add message to thread with raw assessment data and explicit JSON instruction
-    const messageContent = `${JSON.stringify(rawAssessmentData)}
-
-CRITICAL: Respond with ONLY valid JSON in the exact format specified in your instructions. No markdown, no explanations, no text formatting - just pure JSON that can be parsed directly.`
-
-    const messageResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': 'assistants=v2',
-      },
-      body: JSON.stringify({
-        role: 'user',
-        content: messageContent
-      }),
-    })
-
-    if (!messageResponse.ok) {
-      const errorText = await messageResponse.text()
-      console.error('Message creation error:', messageResponse.status, errorText)
-      throw new Error(`Message creation error: ${messageResponse.status} - ${errorText}`)
-    }
-
-    console.log('Added message to thread')
-
-    // Run the assistant with additional parameters to enforce JSON
-    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': 'assistants=v2',
-      },
-      body: JSON.stringify({
-        assistant_id: assistantId,
-        additional_instructions: "You must respond with ONLY valid JSON. No markdown formatting, no explanations, no additional text. Just pure JSON that can be parsed directly by JSON.parse()."
-      }),
-    })
-
-    if (!runResponse.ok) {
-      const errorText = await runResponse.text()
-      console.error('Run creation error:', runResponse.status, errorText)
-      throw new Error(`Run creation error: ${runResponse.status} - ${errorText}`)
-    }
-
-    const runData = await runResponse.json()
-    const runId = runData.id
-    console.log('Started run:', runId)
-
-    // Poll for completion
-    let runStatus = 'in_progress'
-    let attempts = 0
-    const maxAttempts = 45 // 45 seconds timeout (increased from 30)
-
-    while (runStatus === 'in_progress' || runStatus === 'queued') {
-      if (attempts >= maxAttempts) {
-        console.error(`Assistant run timeout after ${maxAttempts} seconds`)
-        throw new Error('Assistant run timeout')
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second
+    if (useMultiAssistant) {
+      // Call all three assistants in parallel
+      console.log('Calling all three assistants in parallel...')
       
-      const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
-        headers: {
-          Authorization: `Bearer ${openaiApiKey}`,
-          'OpenAI-Beta': 'assistants=v2',
-        },
-      })
+      const assistantCalls = [
+        callAssistant(workoutAssistantId!, openaiApiKey, rawAssessmentData, 'workout')
+          .then(data => { workoutData = data; console.log('Workout assistant completed successfully'); })
+          .catch(error => { console.error('Workout assistant failed:', error.message); }),
+        
+        callAssistant(nutritionAssistantId!, openaiApiKey, rawAssessmentData, 'nutrition')
+          .then(data => { nutritionData = data; console.log('Nutrition assistant completed successfully'); })
+          .catch(error => { console.error('Nutrition assistant failed:', error.message); }),
+        
+        callAssistant(recommendationsAssistantId!, openaiApiKey, rawAssessmentData, 'recommendations')
+          .then(data => { recommendationsData = data; console.log('Recommendations assistant completed successfully'); })
+          .catch(error => { console.error('Recommendations assistant failed:', error.message); })
+      ]
 
-      if (!statusResponse.ok) {
-        throw new Error(`Status check error: ${statusResponse.status}`)
-      }
-
-      const statusData = await statusResponse.json()
-      runStatus = statusData.status
-      attempts++
+      // Wait for all assistants to complete (or fail)
+      await Promise.allSettled(assistantCalls)
       
-      console.log(`Run status: ${runStatus} (attempt ${attempts})`)
-    }
-
-    if (runStatus !== 'completed') {
-      throw new Error(`Assistant run failed with status: ${runStatus}`)
-    }
-
-    // Get the messages from the thread
-    const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'OpenAI-Beta': 'assistants=v2',
-      },
-    })
-
-    if (!messagesResponse.ok) {
-      const errorText = await messagesResponse.text()
-      console.error('Messages retrieval error:', messagesResponse.status, errorText)
-      throw new Error(`Messages retrieval error: ${messagesResponse.status} - ${errorText}`)
-    }
-
-    const messagesData = await messagesResponse.json()
-    console.log('Retrieved messages from thread')
-
-    // Get the assistant's response (first message from assistant)
-    const assistantMessage = messagesData.data.find(msg => msg.role === 'assistant')
-    
-    if (!assistantMessage || !assistantMessage.content || !assistantMessage.content[0]) {
-      throw new Error('No response from assistant')
-    }
-
-    const rawContent = assistantMessage.content[0].text.value
-    console.log('Raw content from OpenAI Assistant:', rawContent)
-
-    let planData
-    try {
-      // Enhanced JSON cleaning to handle various response formats
-      let cleanedContent = rawContent.trim()
+      console.log('All assistants completed. Results:')
+      console.log('- Workout data:', workoutData ? 'Success' : 'Failed')
+      console.log('- Nutrition data:', nutritionData ? 'Success' : 'Failed')
+      console.log('- Recommendations data:', recommendationsData ? 'Success' : 'Failed')
+    } else {
+      // Fallback to single assistant (backward compatibility)
+      console.log('Using single assistant (backward compatibility)...')
       
-      // Remove any markdown code block indicators if present
-      cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/\s*```$/, '')
-      cleanedContent = cleanedContent.replace(/^```\s*/, '').replace(/\s*```$/, '')
-      
-      // Remove any leading/trailing text that isn't JSON
-      const jsonStartIndex = cleanedContent.indexOf('{')
-      const jsonEndIndex = cleanedContent.lastIndexOf('}')
-      
-      if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
-        cleanedContent = cleanedContent.substring(jsonStartIndex, jsonEndIndex + 1)
-      }
-      
-      console.log('Cleaned content for parsing:', cleanedContent.substring(0, 200) + '...')
-      
-      // Try to parse the cleaned JSON
-      planData = JSON.parse(cleanedContent)
-      console.log('Successfully parsed plan data:', planData)
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError)
-      console.error('Failed to parse content:', rawContent)
-      
-      // If parsing fails, try to extract JSON using a more aggressive approach
       try {
-        const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          planData = JSON.parse(jsonMatch[0]);
-          console.log('Successfully parsed plan data using regex extraction:', planData);
-        } else {
-          throw new Error('No valid JSON found in response');
-        }
-      } catch (secondParseError) {
-        console.error('Second parse attempt failed:', secondParseError);
-        throw new Error(`Failed to parse Assistant response as JSON: ${parseError.message}. Raw response: ${rawContent.substring(0, 500)}...`);
+        const singleAssistantResponse = await callAssistant(singleAssistantId!, openaiApiKey, rawAssessmentData, 'single')
+        
+        // Parse the single assistant response into the expected format
+        workoutData = { workout_schedule: singleAssistantResponse.workout_schedule }
+        nutritionData = { nutrition_plan: singleAssistantResponse.nutrition_plan }
+        recommendationsData = { recommendations: singleAssistantResponse.recommendations }
+        
+        console.log('Single assistant completed successfully')
+      } catch (error) {
+        console.error('Single assistant failed:', error.message)
       }
     }
 
-    // Validate the required structure
-    if (!planData.workout_schedule || !planData.nutrition_plan || !planData.recommendations) {
-      console.error('Invalid plan data structure:', planData)
-      throw new Error('Invalid plan data structure from Assistant')
+    // Aggregate responses into final format
+    const finalResponse = {
+      workout_schedule: workoutData?.workout_schedule || [],
+      nutrition_plan: nutritionData?.nutrition_plan || null,
+      recommendations: recommendationsData?.recommendations || null
     }
 
-    console.log('Generated plan data:', planData)
+    console.log('Final aggregated response:', finalResponse)
 
-    // Store workout plans in the database
+    // Store workout plans in the database (if available)
     const workoutPlans = []
     
-    // Group exercises by week and workout
-    const workoutsByWeekAndDay = {}
-    
-    for (const scheduleItem of planData.workout_schedule) {
-      const key = `Week ${scheduleItem.week} - ${scheduleItem.workout_title}`
+    if (workoutData?.workout_schedule && workoutData.workout_schedule.length > 0) {
+      // Group exercises by week and workout
+      const workoutsByWeekAndDay: any = {}
       
-      if (!workoutsByWeekAndDay[key]) {
-        workoutsByWeekAndDay[key] = {
-          title: scheduleItem.workout_title, // Map workout_title to title
-          description: scheduleItem.description || `Week ${scheduleItem.week} - ${scheduleItem.workout_title}`,
-          category: scheduleItem.category || 'strength',
-          difficulty: parseInt(scheduleItem.difficulty) || 3, // Ensure it's a number
-          estimated_duration: scheduleItem.estimated_duration || '45 minutes',
-          week: scheduleItem.week,
-          day: scheduleItem.day,
-          exercises: []
+      for (const scheduleItem of workoutData.workout_schedule) {
+        const key = `Week ${scheduleItem.week} - ${scheduleItem.workout_title}`
+        
+        if (!workoutsByWeekAndDay[key]) {
+          workoutsByWeekAndDay[key] = {
+            title: scheduleItem.workout_title,
+            description: scheduleItem.description || `Week ${scheduleItem.week} - ${scheduleItem.workout_title}`,
+            category: scheduleItem.category || 'strength',
+            difficulty: parseInt(scheduleItem.difficulty) || 3,
+            estimated_duration: scheduleItem.estimated_duration || '45 minutes',
+            week: scheduleItem.week,
+            day: scheduleItem.day,
+            exercises: []
+          }
+        }
+        
+        if (scheduleItem.exercises) {
+          workoutsByWeekAndDay[key].exercises.push(...scheduleItem.exercises)
         }
       }
-      
-      if (scheduleItem.exercises) {
-        workoutsByWeekAndDay[key].exercises.push(...scheduleItem.exercises)
-      }
-    }
 
-    // Create workout plans and exercises
-    for (const [key, workout] of Object.entries(workoutsByWeekAndDay)) {
-      console.log(`Creating workout plan: ${workout.title}`)
-      
-      // Create workout plan
-      const { data: workoutPlan, error: workoutPlanError } = await supabaseClient
-        .from('workout_plans')
-        .insert({
-          user_id: user.id,
-          title: workout.title, // Now properly mapped from workout_title
-          description: workout.description,
-          category: workout.category,
-          difficulty: workout.difficulty,
-          estimated_duration: workout.estimated_duration,
-          ai_generated: true
-        })
-        .select()
-        .single()
+      // Create workout plans and exercises
+      for (const [key, workout] of Object.entries(workoutsByWeekAndDay)) {
+        console.log(`Creating workout plan: ${(workout as any).title}`)
+        
+        // Create workout plan
+        const { data: workoutPlan, error: workoutPlanError } = await supabaseClient
+          .from('workout_plans')
+          .insert({
+            user_id: user.id,
+            title: (workout as any).title,
+            description: (workout as any).description,
+            category: (workout as any).category,
+            difficulty: (workout as any).difficulty,
+            estimated_duration: (workout as any).estimated_duration,
+            ai_generated: true
+          })
+          .select()
+          .single()
 
-      if (workoutPlanError) {
-        console.error('Error creating workout plan:', workoutPlanError)
-        throw workoutPlanError
-      }
+        if (workoutPlanError) {
+          console.error('Error creating workout plan:', workoutPlanError)
+          // Continue with other workouts even if one fails
+        } else {
+          workoutPlans.push(workoutPlan)
 
-      workoutPlans.push(workoutPlan)
+          // Create exercises for this workout plan
+          const exercisesToInsert = (workout as any).exercises.map((exercise: any, index: number) => ({
+            workout_plan_id: workoutPlan.id,
+            name: exercise.name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            weight: exercise.weight || 'bodyweight',
+            rest_time: exercise.rest_seconds ? `${exercise.rest_seconds} seconds` : '60 seconds',
+            notes: exercise.notes,
+            order_index: index
+          }))
 
-      // Create exercises for this workout plan
-      const exercisesToInsert = workout.exercises.map((exercise, index) => ({
-        workout_plan_id: workoutPlan.id,
-        name: exercise.name,
-        sets: exercise.sets,
-        reps: exercise.reps,
-        weight: exercise.weight || 'bodyweight',
-        rest_time: exercise.rest_seconds ? `${exercise.rest_seconds} seconds` : '60 seconds',
-        notes: exercise.notes,
-        order_index: index
-      }))
+          const { error: exercisesError } = await supabaseClient
+            .from('workout_exercises')
+            .insert(exercisesToInsert)
 
-      const { error: exercisesError } = await supabaseClient
-        .from('workout_exercises')
-        .insert(exercisesToInsert)
+          if (exercisesError) {
+            console.error('Error creating exercises:', exercisesError)
+          }
 
-      if (exercisesError) {
-        console.error('Error creating exercises:', exercisesError)
-        throw exercisesError
-      }
-
-      // Schedule this workout for the appropriate day in the next 4 weeks
-      const startDate = new Date()
-      const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(workout.day)
-      
-      if (dayOfWeek !== -1) {
-        for (let weekOffset = workout.week - 1; weekOffset < 4; weekOffset += 4) {
-          const targetDate = new Date(startDate)
-          targetDate.setDate(startDate.getDate() + (weekOffset * 7) + (dayOfWeek - startDate.getDay()))
+          // Schedule this workout for the appropriate day in the next 4 weeks
+          const startDate = new Date()
+          const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf((workout as any).day)
           
-          const { error: scheduleError } = await supabaseClient
-            .from('workout_schedule')
-            .insert({
-              user_id: user.id,
-              workout_plan_id: workoutPlan.id,
-              scheduled_date: targetDate.toISOString().split('T')[0],
-              is_completed: false
-            })
+          if (dayOfWeek !== -1) {
+            for (let weekOffset = (workout as any).week - 1; weekOffset < 4; weekOffset += 4) {
+              const targetDate = new Date(startDate)
+              targetDate.setDate(startDate.getDate() + (weekOffset * 7) + (dayOfWeek - startDate.getDay()))
+              
+              const { error: scheduleError } = await supabaseClient
+                .from('workout_schedule')
+                .insert({
+                  user_id: user.id,
+                  workout_plan_id: workoutPlan.id,
+                  scheduled_date: targetDate.toISOString().split('T')[0],
+                  is_completed: false
+                })
 
-          if (scheduleError) {
-            console.error('Error scheduling workout:', scheduleError)
+              if (scheduleError) {
+                console.error('Error scheduling workout:', scheduleError)
+              }
+            }
           }
         }
       }
+
+      console.log('Created workout plans successfully')
     }
 
-    console.log('Created workout plans successfully')
+    // Create nutrition plan (if available)
+    let nutritionPlan = null
+    if (nutritionData?.nutrition_plan) {
+      try {
+        const { data: nutritionPlanData, error: nutritionError } = await supabaseClient
+          .from('nutrition_plans')
+          .insert({
+            user_id: user.id,
+            title: 'NEW MUSCLE! Nutrition Plan',
+            description: 'Personalized nutrition plan generated by NEW MUSCLE! AI Coach',
+            daily_calories: nutritionData.nutrition_plan.daily_calories,
+            protein_g: nutritionData.nutrition_plan.protein_g,
+            carbs_g: nutritionData.nutrition_plan.carbs_g,
+            fat_g: nutritionData.nutrition_plan.fat_g,
+            diet_type: nutritionData.nutrition_plan.diet_type,
+            ai_generated: true
+          })
+          .select()
+          .single()
 
-    // Create nutrition plan
-    const { data: nutritionPlan, error: nutritionError } = await supabaseClient
-      .from('nutrition_plans')
-      .insert({
-        user_id: user.id,
-        title: 'NEW MUSCLE! Nutrition Plan',
-        description: 'Personalized nutrition plan generated by NEW MUSCLE! AI Coach',
-        daily_calories: planData.nutrition_plan.daily_calories,
-        protein_g: planData.nutrition_plan.protein_g,
-        carbs_g: planData.nutrition_plan.carbs_g,
-        fat_g: planData.nutrition_plan.fat_g,
-        diet_type: planData.nutrition_plan.diet_type,
-        ai_generated: true
-      })
-      .select()
-      .single()
+        if (nutritionError) {
+          console.error('Error creating nutrition plan:', nutritionError)
+        } else {
+          nutritionPlan = nutritionPlanData
 
-    if (nutritionError) {
-      console.error('Error creating nutrition plan:', nutritionError)
-      throw nutritionError
-    }
+          // Create meal plans if provided
+          if (nutritionData.nutrition_plan.meals && nutritionData.nutrition_plan.meals.length > 0) {
+            const mealPlansToInsert = nutritionData.nutrition_plan.meals.map((meal: any, index: number) => ({
+              nutrition_plan_id: nutritionPlan.id,
+              meal_type: meal.meal_type,
+              meal_title: meal.meal_title,
+              description: meal.description,
+              calories: meal.calories,
+              protein_g: meal.protein_g,
+              carbs_g: meal.carbs_g,
+              fat_g: meal.fat_g,
+              order_index: index
+            }))
 
-    // Create meal plans if provided
-    if (planData.nutrition_plan.meals && planData.nutrition_plan.meals.length > 0) {
-      const mealPlansToInsert = planData.nutrition_plan.meals.map((meal, index) => ({
-        nutrition_plan_id: nutritionPlan.id,
-        meal_type: meal.meal_type,
-        meal_title: meal.meal_title,
-        description: meal.description,
-        calories: meal.calories,
-        protein_g: meal.protein_g,
-        carbs_g: meal.carbs_g,
-        fat_g: meal.fat_g,
-        order_index: index
-      }))
+            const { error: mealPlansError } = await supabaseClient
+              .from('meal_plans')
+              .insert(mealPlansToInsert)
 
-      const { error: mealPlansError } = await supabaseClient
-        .from('meal_plans')
-        .insert(mealPlansToInsert)
+            if (mealPlansError) {
+              console.error('Error creating meal plans:', mealPlansError)
+            }
+          }
+        }
 
-      if (mealPlansError) {
-        console.error('Error creating meal plans:', mealPlansError)
-        throw mealPlansError
+        console.log('Created nutrition plan successfully')
+      } catch (error) {
+        console.error('Error processing nutrition plan:', error)
       }
     }
 
-    console.log('Created nutrition plan successfully')
-
     console.log('Assessment completed successfully for user:', user.id)
+
+    // Determine success status and message
+    const hasWorkoutData = workoutData && workoutData.workout_schedule && workoutData.workout_schedule.length > 0
+    const hasNutritionData = nutritionData && nutritionData.nutrition_plan
+    const hasRecommendationsData = recommendationsData && recommendationsData.recommendations
+
+    const successCount = [hasWorkoutData, hasNutritionData, hasRecommendationsData].filter(Boolean).length
+    const totalAssistants = useMultiAssistant ? 3 : 1
+
+    let message = 'HashimFit fitness plan generated and stored successfully'
+    let warning = null
+
+    if (successCount < totalAssistants) {
+      warning = `Some components may be incomplete. ${successCount}/${totalAssistants} assistants completed successfully.`
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'HashimFit fitness plan generated and stored successfully',
+        message,
+        warning,
         data: {
           workout_plans: workoutPlans.length,
-          nutrition_plan: nutritionPlan.id,
-          recommendations: planData.recommendations
+          nutrition_plan: nutritionPlan?.id || null,
+          recommendations: hasRecommendationsData ? 'generated' : null
         }
       }),
       {
