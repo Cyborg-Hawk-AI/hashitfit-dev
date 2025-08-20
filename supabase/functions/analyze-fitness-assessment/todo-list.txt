@@ -1,0 +1,2 @@
+workout card on the dashbaord page, has to propogate the correct data. 
+

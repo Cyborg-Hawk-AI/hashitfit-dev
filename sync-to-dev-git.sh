@@ -2,6 +2,7 @@
 
 # HashimFit Git Sync Script
 # This script syncs your local changes to the GitHub hashitfit-dev repository
+# ONE-WAY PUSH ONLY - Never fetches from GitHub
 
 set -e  # Exit on any error
 
@@ -84,20 +85,16 @@ else
     fi
 fi
 
-# Check if we're on the main branch (or master)
-if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
-    print_warning "You're not on the main/master branch. Current branch: $CURRENT_BRANCH"
-    
-    read -p "Do you want to continue with current branch or switch to main? (c/M): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Mm]$ ]]; then
-        print_status "Switching to main branch..."
-        git checkout -b main
-        CURRENT_BRANCH="main"
-        print_success "Switched to main branch"
+# Always switch to main branch
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+    print_status "Switching to main branch..."
+    if git show-ref --verify --quiet refs/heads/main; then
+        git checkout main
     else
-        print_warning "Continuing with current branch: $CURRENT_BRANCH"
+        git checkout -b main
     fi
+    CURRENT_BRANCH="main"
+    print_success "Switched to main branch"
 fi
 
 # Check if we have changes to commit
@@ -105,20 +102,20 @@ if git diff-index --quiet HEAD --; then
     print_warning "No changes to commit. Repository is up to date."
     
     # Check if we need to push to remote
-    if git ls-remote --exit-code origin $CURRENT_BRANCH > /dev/null 2>&1; then
+    if git ls-remote --exit-code origin main > /dev/null 2>&1; then
         LOCAL_COMMIT=$(git rev-parse HEAD)
-        REMOTE_COMMIT=$(git ls-remote origin $CURRENT_BRANCH | cut -f1)
+        REMOTE_COMMIT=$(git ls-remote origin main | cut -f1)
         
         if [[ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
             print_status "Local and remote are out of sync. Pushing local changes..."
-            git push origin $CURRENT_BRANCH
+            git push origin main
             print_success "Pushed local changes to remote"
         else
             print_success "Repository is already in sync with remote"
         fi
     else
         print_status "Remote branch doesn't exist. Pushing for the first time..."
-        git push -u origin $CURRENT_BRANCH
+        git push -u origin main
         print_success "Pushed to remote for the first time"
     fi
     exit 0
@@ -156,44 +153,18 @@ git commit -m "$COMMIT_MESSAGE"
 COMMIT_HASH=$(git rev-parse --short HEAD)
 print_success "Committed changes with hash: $COMMIT_HASH"
 
-# Fetch latest changes from remote
-print_status "Fetching latest changes from remote..."
-git fetch origin
-
-# Check if remote branch exists
-if git ls-remote --exit-code origin $CURRENT_BRANCH > /dev/null 2>&1; then
-    # Check if we need to pull before pushing
-    if git rev-list HEAD..origin/$CURRENT_BRANCH --count > /dev/null 2>&1; then
-        REMOTE_AHEAD=$(git rev-list HEAD..origin/$CURRENT_BRANCH --count)
-        if [ "$REMOTE_AHEAD" -gt 0 ]; then
-            print_warning "Remote has $REMOTE_AHEAD new commits. Pulling latest changes..."
-            git pull origin $CURRENT_BRANCH
-            print_success "Pulled latest changes from remote"
-        fi
-    fi
-    
-    # Push changes
-    print_status "Pushing changes to $CURRENT_BRANCH..."
-    if git push origin "$CURRENT_BRANCH"; then
-        print_success "Successfully pushed changes to $CURRENT_BRANCH"
-    else
-        print_error "Failed to push changes. Please check your remote configuration."
-        exit 1
-    fi
+# Force push to main branch (ONE-WAY PUSH ONLY)
+print_status "Force pushing changes to main branch..."
+if git push --force-with-lease origin main; then
+    print_success "Successfully force pushed changes to main branch"
 else
-    # First time push
-    print_status "Pushing to remote for the first time..."
-    if git push -u origin "$CURRENT_BRANCH"; then
-        print_success "Successfully pushed to remote for the first time"
-    else
-        print_error "Failed to push to remote. Please check your remote configuration."
-        exit 1
-    fi
+    print_error "Failed to push changes. Please check your remote configuration."
+    exit 1
 fi
 
 # Show final status
 print_status "Repository sync complete!"
-print_status "Branch: $CURRENT_BRANCH"
+print_status "Branch: main"
 print_status "Commit: $COMMIT_HASH"
 print_status "Remote: $(git remote get-url origin)"
 
