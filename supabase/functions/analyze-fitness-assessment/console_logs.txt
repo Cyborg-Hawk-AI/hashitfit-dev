@@ -1,0 +1,36 @@
+Submitting assessment data: 
+Object { name: "aaaa", age: 30, gender: "male", height: 175, weight: 75, fitnessGoal: "general_fitness", workoutFrequency: 3, diet: "standard", equipment: "minimal", sportsPlayed: [], … }
+index-BLCDtXGv.js:512:58999
+Assessment completed, showing plan generation screen index-BLCDtXGv.js:512:65033
+Starting Edge Functions immediately... index-BLCDtXGv.js:512:60941
+Waiting for Edge Function to complete... index-BLCDtXGv.js:512:60450
+PlanGenerationService: Starting generateFitnessPlan with data: 
+Object { name: "aaaa", age: 30, gender: "male", height: 175, weight: 75, fitnessGoal: "general_fitness", workoutFrequency: 3, diet: "standard", equipment: "minimal", sportsPlayed: [], … }
+index-BLCDtXGv.js:459:61305
+PlanGenerationService: Updating user profile... index-BLCDtXGv.js:459:61478
+Profile updated successfully index-BLCDtXGv.js:459:62194
+PlanGenerationService: Storing assessment data... index-BLCDtXGv.js:459:62238
+Assessment data stored successfully index-BLCDtXGv.js:459:62633
+PlanGenerationService: Calling all three assistants in parallel... index-BLCDtXGv.js:459:62684
+Plan generation completed, navigating to dashboard index-BLCDtXGv.js:512:65376
+🔍 Dashboard: Starting assessment status check index-BLCDtXGv.js:588:29094
+🔍 Dashboard: userId: a9811305-1d4d-4719-b691-2f0132c6420b index-BLCDtXGv.js:588:29156
+🔍 Dashboard: UserId found, checking assessment status... index-BLCDtXGv.js:588:29290
+🔍 Dashboard: Calling PlanGenerationService.checkUserPlanStatus with userId: a9811305-1d4d-4719-b691-2f0132c6420b index-BLCDtXGv.js:588:29367
+PlanGenerationService: Starting checkUserPlanStatus for userId: a9811305-1d4d-4719-b691-2f0132c6420b index-BLCDtXGv.js:459:60204
+PlanGenerationService: Supabase query result - profiles: 
+Array [ {…} ]
+index-BLCDtXGv.js:459:60382
+PlanGenerationService: Supabase query result - error: null index-BLCDtXGv.js:459:60456
+PlanGenerationService: Found 1 profile(s) for userId: a9811305-1d4d-4719-b691-2f0132c6420b index-BLCDtXGv.js:459:60903
+PlanGenerationService: Using first profile: 
+Object { has_completed_assessment: true }
+index-BLCDtXGv.js:459:60996
+PlanGenerationService: has_completed_assessment value: true index-BLCDtXGv.js:459:61099
+🔍 Dashboard: PlanGenerationService.checkUserPlanStatus returned: true index-BLCDtXGv.js:588:29504
+🔍 Dashboard: User has completed assessment, staying on dashboard index-BLCDtXGv.js:588:29589
+🔍 Dashboard: Assessment check completed, setting isCheckingAssessment to false index-BLCDtXGv.js:588:29997
+Fetching weekly workouts for user: a9811305-1d4d-4719-b691-2f0132c6420b index-BLCDtXGv.js:588:1247
+Fetching workout schedules index-BLCDtXGv.js:588:1488
+Finding workout for 2025-08-20 index-BLCDtXGv.js:588:1891
+No scheduled workout found for selected date index-BLCDtXGv.js:588:2004

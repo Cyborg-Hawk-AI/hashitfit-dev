@@ -1,0 +1,119 @@
+
+#root {
+  margin: 0 auto;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #f43f5eaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #f43f5eaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Custom checkbox toggle for metric/imperial switch */
+.toggle-checkbox {
+  height: 0;
+  width: 0;
+  visibility: hidden;
+  position: absolute;
+}
+
+.toggle-checkbox + label {
+  cursor: pointer;
+  width: 50px;
+  height: 24px;
+  background: #eeeeee;
+  display: block;
+  border-radius: 100px;
+  position: relative;
+}
+
+.toggle-checkbox + label:after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.toggle-checkbox:checked + label {
+  background: #f43f5e;
+}
+
+.toggle-checkbox:checked + label:after {
+  left: calc(100% - 2px);
+  transform: translateX(-100%);
+}
+
+/* Ensure chat button is fixed and appears above everything */
+.chat-fab {
+  position: fixed;
+  bottom: 5rem;
+  right: 1rem;
+  z-index: 50;
+}
+
+/* Glassmorphism card */
+.glassmorphism-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Enhanced radio and checkbox inputs */
+.hashim-radio-item-blue {
+  @apply flex items-center px-4 py-2 rounded-md border-2 w-full cursor-pointer transition-all hover:border-hashim-300;
+}
+
+.hashim-radio-group {
+  @apply space-y-2;
+}
+
+.hashim-input {
+  @apply border-gray-300 focus:border-hashim-500 focus:ring-hashim-500;
+}
+
+.hashim-button-primary {
+  @apply bg-hashim-600 hover:bg-hashim-700 text-white;
+}
+
+.hashim-button-outline {
+  @apply border-hashim-300 text-hashim-700 hover:bg-hashim-50;
+}

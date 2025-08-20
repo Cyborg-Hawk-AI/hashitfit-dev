@@ -1,0 +1,96 @@
+m#### 📌 Objective
+
+You are contributing to the **HashimFit AI-powered personal fitness trainer**. This project is an advanced full-stack web app using Supabase, OpenAI, AWS, and modern frontend frameworks. It includes features like voice workout logging, AI plan generation, photo-based meal tracking, and real-time coaching.
+
+
+---
+
+### 🔐 Secrets to Use for Environment Variables (Don't overwrite)
+
+```env
+SUPABASE_URL = https://<secure-url>
+SUPABASE_ANON_KEY = 6a4d8cca5a79a644ee7a65db208693713a853a307b12ba3c0d04abb3084fd513
+SUPABASE_SERVICE_ROLE_KEY = 78671eb175c4c46b79be910617e5fbd1b09ab69af81759a0cd1a392220b37955
+SUPABASE_DB_URL = postgres://...
+
+OPENAI_API_KEY = cae461291702e9549e85db84d5b67ddc0524245b8b2bb1925e9dca23eb610fd9
+OPENAI_API_KEY_ASSESSMENTS = b870ce833bb320386701f0d912e51aacdc42401f641e2d6fb4c8bd23a475fa75
+
+OPENAI_ASSISTANT_ID = 4af2e9648fafbb312d5c864b7398d506ea6b14a58942a9968588046a689ca918
+OPENAI_ASSISTANT_ASSESSMENT_ID = 4af2e9648fafbb312d5c864b7398d506ea6b14a58942a9968588046a689ca918
+
+AWS_ACCESS_KEY_ID = aecc716b5803b41515b96c8d7eba3ddf13c72d51f257f9a13fc608a31c843b46
+AWS_SECRET_ACCESS_KEY = 8e805ed34398be0d8084f189663f7ad78a87f92014e546a9554ab83aed456260
+```
+
+---
+
+### 📁 Files to Study Before Implementing Features
+
+Please read and absorb the logic in the following files before making changes or building features:
+
+* `docs/EDGE_FUNCTIONS.md`
+* `docs/TECHNICAL_ANALYSIS.md`
+* `docs/DATABASE_SCHEMA.md`
+* `docs/API_INTEGRATION.md`
+
+You must fully understand how:
+
+* Assessment completion triggers `generate-workout-plan`
+* Audio and image files are processed through Edge Functions
+* Data flows through `workout_logs`, `exercise_logs`, `meal_logs`, `chat_messages`, etc.
+* Supabase and OpenAI interact securely through Edge Functions
+
+---
+
+### 🔄 System Behaviors to Understand
+
+* Voice logs → sent to Whisper/GPT-4o-mini → parsed into sets/reps/weight → saved to DB
+* Snap a meal → stored in Supabase → analyzed with OpenAI Vision → macros parsed → saved
+* Assessment → analyzed by GPT-4o-mini → structured JSON → stored across multiple DB tables
+* Chat assistant → powered by OpenAI Assistant API → persistent thread per user → GPT replies stored
+* Real-time UI updates are powered by Supabase's subscriptions
+
+---
+
+### ✍️ Working With AI Features
+
+* All coaching, summarization, or assistant-related functionality must:
+
+  * Be routed through the correct **Edge Function**
+  * Use the corresponding **OpenAI Assistant ID or GPT model**
+  * Use threads where required (chat assistant)
+  * Return valid JSON if data is parsed or stored in DB
+* NEVER call OpenAI directly from the client.
+* NEVER store sensitive data locally — use parameter stores or secrets managers.
+
+---
+
+### 🎯 Current Goal: On-the-Fly Editing Experience
+
+You are implementing a real-time editing system across:
+
+* **Workout Cards (pre-start and active workouts)**
+* **Voice-input parsed sessions**
+* **Snap/snack nutrition analysis**
+
+You must enable:
+
+* Inline editing (sets, reps, weight)
+* Drag-and-drop reordering
+* Superset grouping
+* Rest timer customization
+* Instant sync to `exercise_logs`
+* AI feedback or adjustment buttons invoking Edge Functions
+
+Reference the AI system diagram and use `WorkoutService` and `MealService` for all backend ops.
+
+---
+
+### 🧠 Reminders
+
+* Use existing components like `EnhancedWorkoutSessionCard.tsx` for extension
+* Data consistency must be preserved across `workout_logs`, `exercise_logs`, and `workout_schedule`
+* Any new components must align with **HashimFit’s design language** (clean, soft, Apple-inspired UI)
+* Use Tailwind and `shadcn/ui` as base component systems
+

@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    --hashim-50: 220 89% 97%;
+    --hashim-100: 220 69% 94%;
+    --hashim-200: 220 57% 88%;
+    --hashim-300: 220 48% 80%;
+    --hashim-400: 220 41% 70%;
+    --hashim-500: 220 36% 59%;
+    --hashim-600: 220 38% 51%;
+    --hashim-700: 220 44% 44%;
+    --hashim-800: 220 52% 37%;
+    --hashim-900: 220 43% 20%;
+    --hashim-950: 220 44% 13%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 20% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 20% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 20% 98%;
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+    --ring: 224.3 76.3% 48%;
+  }
+
+  * {
+    @apply border-border selection:bg-hashim-500/20 selection:text-hashim-700;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased overflow-x-hidden;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv02", "cv03";
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+  
+  /* Mobile-specific input styles */
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+  
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .glassmorphism {
+    @apply bg-white/80 dark:bg-black/50 backdrop-blur-lg border border-white/20 dark:border-white/10 shadow-sm;
+  }
+  
+  .glassmorphism-card {
+    @apply bg-white/90 dark:bg-black/40 backdrop-blur-xl border border-white/30 dark:border-white/10 shadow-md;
+  }
+  
+  .section-padding {
+    @apply px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10;
+  }
+  
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .hashim-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 md:px-8;
+  }
+
+  .hashim-card {
+    @apply rounded-2xl glassmorphism-card p-6 transition-all duration-300 ease-in-out animate-scale-in;
+  }
+
+  .hashim-button {
+    @apply rounded-full font-medium transition-all duration-300 
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-hashim-500 
+           active:scale-95 disabled:opacity-70 disabled:pointer-events-none;
+  }
+
+  .hashim-button-primary {
+    @apply hashim-button bg-hashim-600 hover:bg-hashim-700 text-white px-5 py-2.5;
+  }
+
+  .hashim-button-secondary {
+    @apply hashim-button bg-hashim-100 hover:bg-hashim-200 text-hashim-800 px-5 py-2.5;
+  }
+
+  .hashim-button-outline {
+    @apply hashim-button border border-hashim-600 hover:bg-hashim-50 text-hashim-700 px-5 py-2.5;
+  }
+
+  .hashim-input {
+    @apply rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background 
+           file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground 
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .hashim-radio-group {
+    @apply flex flex-wrap gap-3;
+  }
+
+  .hashim-radio-item {
+    @apply hashim-button flex items-center justify-center border border-muted bg-transparent text-sm font-medium
+           data-[state=checked]:bg-hashim-100 data-[state=checked]:text-hashim-800 
+           data-[state=checked]:border-hashim-200 px-4 py-2.5;
+  }
+  
+  /* Add blue selection styles without using @apply with data attributes */
+  .hashim-radio-item-blue {
+    @apply hashim-button flex items-center justify-center border border-muted bg-transparent text-sm font-medium px-4 py-2.5;
+  }
+}
+
+/* Apply the checked styles directly without @apply to avoid circular dependency */
+.hashim-radio-item-blue[data-state="checked"] {
+  background-color: rgb(var(--hashim-500));
+  color: white;
+  border-color: rgb(var(--hashim-500));
+}
+
+.microphone-ripple {
+  position: relative;
+}
+
+.microphone-ripple::after {
+  content: "";
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  top: -5px;
+  left: -5px;
+  animation: ripple 1.5s infinite ease-out;
+  transform: scale(0);
+  opacity: 0;
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animate-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
