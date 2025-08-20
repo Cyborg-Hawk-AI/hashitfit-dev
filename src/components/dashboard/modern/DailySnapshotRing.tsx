@@ -1,21 +1,42 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 interface DailySnapshotRingProps {
   caloriesConsumed: number;
   caloriesTarget: number;
   proteinConsumed: number;
   proteinTarget: number;
+  isLoading?: boolean;
 }
 
 export function DailySnapshotRing({ 
   caloriesConsumed, 
   caloriesTarget, 
   proteinConsumed, 
-  proteinTarget 
+  proteinTarget,
+  isLoading = false
 }: DailySnapshotRingProps) {
   const calorieProgress = Math.min((caloriesConsumed / caloriesTarget) * 100, 100);
   const proteinProgress = Math.min((proteinConsumed / proteinTarget) * 100, 100);
+
+  if (isLoading) {
+    return (
+      <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-white/40 dark:border-slate-700/40 shadow-lg">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-bold text-slate-800 dark:text-white flex items-center">
+            📊 Today's Progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+            <span className="ml-2 text-slate-600 dark:text-slate-300">Loading nutrition data...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-white/40 dark:border-slate-700/40 shadow-lg">

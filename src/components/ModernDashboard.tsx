@@ -40,7 +40,10 @@ export function ModernDashboard() {
   const { 
     weeklyWorkouts, 
     workoutSchedules, 
+    nutritionProgress,
     isLoadingSchedules, 
+    isLoadingNutrition,
+    isLoadingTodayNutrition,
     startOfCurrentWeek, 
     today 
   } = useDashboardData();
@@ -142,14 +145,14 @@ export function ModernDashboard() {
   ];
 
   const nutritionData = {
-    dailyCalories: 1850,
-    targetCalories: 2100,
-    protein: 125,
-    targetProtein: 140,
-    carbs: 180,
-    targetCarbs: 210,
-    fat: 65,
-    targetFat: 70,
+    dailyCalories: nutritionProgress.caloriesConsumed,
+    targetCalories: nutritionProgress.caloriesTarget,
+    protein: nutritionProgress.proteinConsumed,
+    targetProtein: nutritionProgress.proteinTarget,
+    carbs: nutritionProgress.carbsConsumed,
+    targetCarbs: nutritionProgress.carbsTarget,
+    fat: nutritionProgress.fatConsumed,
+    targetFat: nutritionProgress.fatTarget,
     trendReason: "Your weight is trending down due to a consistent calorie deficit of ~250 calories daily. Your high protein intake (125g) is helping preserve muscle mass during fat loss. Keep maintaining this balance!"
   };
 
@@ -215,10 +218,11 @@ export function ModernDashboard() {
             onToggleCollapse={() => toggleSection('completedToday')}
           />
           <DailySnapshotRing 
-            caloriesConsumed={1240}
-            caloriesTarget={2100}
-            proteinConsumed={85}
-            proteinTarget={120}
+            caloriesConsumed={nutritionProgress.caloriesConsumed}
+            caloriesTarget={nutritionProgress.caloriesTarget}
+            proteinConsumed={nutritionProgress.proteinConsumed}
+            proteinTarget={nutritionProgress.proteinTarget}
+            isLoading={isLoadingNutrition || isLoadingTodayNutrition}
           />
         </div>
 
