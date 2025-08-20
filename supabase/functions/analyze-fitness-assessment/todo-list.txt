@@ -1,2 +1,23 @@
 workout card on the dashbaord page, has to propogate the correct data. 
+work on nutrition assistant to ensure all assistants are generating the correct data, generate a test file for what the application would input 
+
+coach insights card:
+based on the entire profile, this thing would show daily recommendations, with the ability to open a text box, communicate with chatgpt, and answer their question. Use RAG for contextual analysis of the users table informaiton 
+
+completed today:
+workouts they completed and what they ate, give the name of the entire workout, not exercises, same with name of meal 
+
+Todays progress, openai guesstimatation of the nutritional intake, compared to their goal, link with snapasnack feature, 
+
+Streaks Card, 
+develop logic and appropriately award based on metrics 
+
+weight trend:
+displays nutritional data
+fix ui components to not overlap, optimize for mobile view
+move coach insights below the graph and make it expandable within the card. 
+nutritional data displayed here should be for the last 7 days 
+
+
+weekly timeline, just make sure, data is propogating correctly and values do not show mock data
 
