@@ -21,6 +21,7 @@ import { PrescriptiveWeeklySummary } from "@/components/PrescriptiveWeeklySummar
 import { ComingUpPreview } from "@/components/ComingUpPreview";
 import { InteractiveGoalsCard } from "@/components/InteractiveGoalsCard";
 import { Plus } from "lucide-react";
+import { useDashboardMutations } from "@/hooks/useDashboardMutations";
 
 export default function PlannerPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -31,6 +32,7 @@ export default function PlannerPage() {
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
   const { toast } = useToast();
   const { userId } = useAuth();
+  const { scheduleWorkoutMutation } = useDashboardMutations();
   
   // Collapse state management
   const [collapsedSections, setCollapsedSections] = useState({
@@ -322,12 +324,19 @@ export default function PlannerPage() {
   };
   
   const handleWorkoutSelected = (workout: any) => {
-    // TODO: Implement workout scheduling logic
-    setShowAddWorkout(false);
-    toast({
-      title: "Workout Scheduled",
-      description: `${workout.title} has been added to ${format(selectedDate, 'MMM d')}.`,
+    if (!workout || !workout.id) {
+      return;
+    }
+    
+    const selectedDateString = format(selectedDate, 'yyyy-MM-dd');
+    console.log(`Scheduling workout ${workout.id} for ${selectedDateString}`);
+    
+    scheduleWorkoutMutation.mutate({
+      workout_plan_id: workout.id,
+      scheduled_date: selectedDateString
     });
+    
+    setShowAddWorkout(false);
   };
   
   return (

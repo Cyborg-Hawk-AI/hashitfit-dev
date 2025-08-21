@@ -8,6 +8,10 @@ import { Award, Flame, Target, ChevronDown, ChevronUp } from "lucide-react";
 
 interface GamificationCardProps {
   streakDays: number;
+  nutritionStreak?: number;
+  longestWorkoutStreak?: number;
+  longestNutritionStreak?: number;
+  currentWeekStreak?: number;
   latestBadge?: {
     name: string;
     icon: string;
@@ -25,6 +29,10 @@ interface GamificationCardProps {
 
 export function GamificationCard({ 
   streakDays, 
+  nutritionStreak = 0,
+  longestWorkoutStreak = 0,
+  longestNutritionStreak = 0,
+  currentWeekStreak = 0,
   latestBadge, 
   xpProgress, 
   onViewAchievements,
@@ -72,17 +80,69 @@ export function GamificationCard({
       </CardHeader>
       {!collapsed && (
         <CardContent className="pt-0 space-y-4">
-          {/* Streak */}
-          <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl border border-orange-200/50 dark:border-orange-700/50">
-            <Flame className="h-6 w-6 text-orange-500 animate-pulse" />
-            <div className="flex-1">
-              <p className="font-semibold text-slate-800 dark:text-white">
-                🔥 Streak: {streakDays}-day streak
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                {streakDays >= 7 ? "On fire! 🚀" : "Don't break it!"}
-              </p>
-            </div>
+          {/* Streaks Section */}
+          <div className="space-y-3">
+            {/* Primary Workout Streak */}
+            {streakDays > 0 && (
+              <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl border border-orange-200/50 dark:border-orange-700/50">
+                <Flame className="h-6 w-6 text-orange-500 animate-pulse" />
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-800 dark:text-white">
+                    💪 Workout Streak: {streakDays} days
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {streakDays >= 7 ? "On fire! 🚀" : "Don't break it!"}
+                    {longestWorkoutStreak > streakDays && ` (Best: ${longestWorkoutStreak} days)`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Nutrition Streak */}
+            {nutritionStreak > 0 && (
+              <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200/50 dark:border-green-700/50">
+                <div className="h-6 w-6 text-green-500 animate-pulse">🍽️</div>
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-800 dark:text-white">
+                    🍽️ Nutrition Streak: {nutritionStreak} days
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {nutritionStreak >= 7 ? "Eating well! 🥗" : "Keep tracking!"}
+                    {longestNutritionStreak > nutritionStreak && ` (Best: ${longestNutritionStreak} days)`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* This Week Activity */}
+            {currentWeekStreak > 0 && (
+              <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+                <Target className="h-6 w-6 text-blue-500" />
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-800 dark:text-white">
+                    📅 This Week: {currentWeekStreak} active days
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {currentWeekStreak >= 5 ? "Amazing week! 🌟" : "Great progress!"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* No Streaks Message */}
+            {streakDays === 0 && nutritionStreak === 0 && (
+              <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-900/20 dark:to-gray-900/20 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                <Target className="h-6 w-6 text-slate-500" />
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-800 dark:text-white">
+                    🎯 Start Your Streak
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Complete a workout or log a meal to begin!
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Latest Badge */}

@@ -1,6 +1,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface DailySnapshotRingProps {
   caloriesConsumed: number;
@@ -8,6 +9,7 @@ interface DailySnapshotRingProps {
   proteinConsumed: number;
   proteinTarget: number;
   isLoading?: boolean;
+  onRefresh?: () => void;
 }
 
 export function DailySnapshotRing({ 
@@ -15,10 +17,20 @@ export function DailySnapshotRing({
   caloriesTarget, 
   proteinConsumed, 
   proteinTarget,
-  isLoading = false
+  isLoading = false,
+  onRefresh
 }: DailySnapshotRingProps) {
   const calorieProgress = Math.min((caloriesConsumed / caloriesTarget) * 100, 100);
   const proteinProgress = Math.min((proteinConsumed / proteinTarget) * 100, 100);
+
+  // Add a subtle pulse animation when values change
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  useEffect(() => {
+    setIsUpdating(true);
+    const timer = setTimeout(() => setIsUpdating(false), 1000);
+    return () => clearTimeout(timer);
+  }, [caloriesConsumed, proteinConsumed]);
 
   if (isLoading) {
     return (
@@ -39,10 +51,25 @@ export function DailySnapshotRing({
   }
 
   return (
-    <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-white/40 dark:border-slate-700/40 shadow-lg">
+    <Card className={`bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-white/40 dark:border-slate-700/40 shadow-lg transition-all duration-300 ${isUpdating ? 'ring-2 ring-violet-200 dark:ring-violet-800' : ''}`}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-bold text-slate-800 dark:text-white flex items-center">
-          📊 Today's Progress
+        <CardTitle className="text-lg font-bold text-slate-800 dark:text-white flex items-center justify-between">
+          <div className="flex items-center">
+            📊 Nutritional Progress
+            {isUpdating && (
+              <span className="ml-2 text-xs text-violet-600 dark:text-violet-400 animate-pulse">
+                Updating...
+              </span>
+            )}
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 transition-colors"
+            >
+              🔄 Refresh
+            </button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
@@ -68,7 +95,7 @@ export function DailySnapshotRing({
                   strokeWidth="6"
                   fill="none"
                   strokeLinecap="round"
-                  className="text-violet-500"
+                  className={`text-violet-500 ${isUpdating ? 'animate-pulse' : ''}`}
                   style={{
                     strokeDasharray: `${2 * Math.PI * 32}`,
                     strokeDashoffset: `${2 * Math.PI * 32 * (1 - calorieProgress / 100)}`,
@@ -108,7 +135,7 @@ export function DailySnapshotRing({
                   strokeWidth="6"
                   fill="none"
                   strokeLinecap="round"
-                  className="text-indigo-500"
+                  className={`text-indigo-500 ${isUpdating ? 'animate-pulse' : ''}`}
                   style={{
                     strokeDasharray: `${2 * Math.PI * 32}`,
                     strokeDashoffset: `${2 * Math.PI * 32 * (1 - proteinProgress / 100)}`,

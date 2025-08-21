@@ -149,7 +149,7 @@ serve(async (req) => {
       )
     }
     
-    const { user_id, assessment } = requestData
+    const { user_id, assessment, historicalData } = requestData
     
     if (!user_id || !assessment) {
       console.error("Missing required fields in request")
@@ -175,21 +175,33 @@ serve(async (req) => {
 
     console.log('Recommendations Assistant ID:', recommendationsAssistantId?.substring(0, 10) + '...')
 
-    // Format the raw assessment data for the assistant
-    const rawAssessmentData = {
-      age: parseInt(assessment.age),
-      gender: assessment.gender,
-      height: parseFloat(assessment.height),
-      weight: parseFloat(assessment.weight),
-      fitness_goal: assessment.fitnessGoal,
-      workout_frequency: parseInt(assessment.workoutFrequency),
-      equipment: assessment.equipment,
-      diet_type: assessment.diet,
-      sports_played: assessment.sportsPlayed || [],
-      allergies: assessment.allergies || []
+    // Format the comprehensive data for the assistant
+    const comprehensiveData = {
+      user_profile: {
+        age: parseInt(assessment.age),
+        gender: assessment.gender,
+        height: parseFloat(assessment.height),
+        weight: parseFloat(assessment.weight),
+        fitness_goal: assessment.fitnessGoal,
+        workout_frequency: parseInt(assessment.workoutFrequency),
+        equipment: assessment.equipment,
+        diet_type: assessment.diet,
+        sports_played: assessment.sportsPlayed || [],
+        allergies: assessment.allergies || []
+      },
+      progress_analysis: historicalData ? {
+        workout_progress: historicalData.workoutProgress,
+        nutrition_progress: historicalData.nutritionProgress,
+        recent_workouts: historicalData.recentWorkouts?.slice(0, 3) || [], // Last 3 workouts for context
+        recent_meals: historicalData.recentMeals?.slice(0, 5) || [], // Last 5 meals for context
+        today_meals: historicalData.todayMeals || [], // Today's completed meals
+        upcoming_workouts: historicalData.upcomingWorkouts?.slice(0, 3) || [], // Next 3 scheduled workouts
+        current_nutrition_plan: historicalData.currentNutritionPlan,
+        progress_summary: historicalData.progressSummary || {} // Detailed progress metrics
+      } : null
     }
 
-    console.log('Sending raw assessment data to recommendations assistant:', JSON.stringify(rawAssessmentData))
+    console.log('Sending comprehensive data to recommendations assistant:', JSON.stringify(comprehensiveData, null, 2))
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -198,7 +210,7 @@ serve(async (req) => {
 
     // Call the recommendations assistant
     console.log('Calling recommendations assistant...')
-    const recommendationsData = await callRecommendationsAssistant(recommendationsAssistantId, openaiApiKey, rawAssessmentData)
+    const recommendationsData = await callRecommendationsAssistant(recommendationsAssistantId, openaiApiKey, comprehensiveData)
     console.log('Recommendations assistant completed successfully')
 
     // Store recommendations in the database

@@ -2,6 +2,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { WorkoutService, WorkoutSchedule, WorkoutLog, ExerciseLog } from "@/lib/supabase/services/WorkoutService";
+import { DynamicRecommendationsService } from "@/lib/supabase/services/DynamicRecommendationsService";
 import { toast } from "@/hooks/use-toast";
 
 export function useDashboardMutations() {
@@ -28,6 +29,7 @@ export function useDashboardMutations() {
       console.log("Successfully scheduled workout");
       queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
       queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
+      // Invalidate all selectedWorkout queries to ensure today's workout is updated
       queryClient.invalidateQueries({ queryKey: ['selectedWorkout'] });
       
       toast({
@@ -126,9 +128,17 @@ export function useDashboardMutations() {
     },
     onSuccess: () => {
       console.log("Successfully updated exercise completion");
+      // Invalidate all selectedWorkout queries to ensure today's workout is updated
       queryClient.invalidateQueries({ queryKey: ['selectedWorkout'] });
       queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
       queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
+      
+      // Update recommendations based on workout completion
+      if (userId) {
+        DynamicRecommendationsService.onWorkoutCompleted(userId);
+        // Invalidate recommendations to refresh the UI
+        queryClient.invalidateQueries({ queryKey: ['userRecommendations'] });
+      }
       
       toast({
         title: "Progress Updated",

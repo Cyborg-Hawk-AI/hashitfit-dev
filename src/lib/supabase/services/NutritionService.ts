@@ -214,10 +214,50 @@ export class NutritionService {
         .single();
         
       if (error) throw error;
+      
+      // After logging the meal, update the nutrition log totals
+      await this.updateNutritionLogTotals(meal.nutrition_log_id);
+      
       return data.id;
     } catch (error) {
       console.error('Error logging meal:', error);
       return null;
+    }
+  }
+
+  // Update nutrition log totals based on all meal logs
+  static async updateNutritionLogTotals(nutritionLogId: string): Promise<boolean> {
+    try {
+      // Get all meal logs for this nutrition log
+      const mealLogs = await this.getMealLogs(nutritionLogId);
+      
+      // Calculate totals
+      const totals = mealLogs.reduce((acc, meal) => ({
+        calories: acc.calories + (meal.calories || 0),
+        protein: acc.protein + (meal.protein_g || 0),
+        carbs: acc.carbs + (meal.carbs_g || 0),
+        fat: acc.fat + (meal.fat_g || 0)
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+      
+      // Update the nutrition log
+      const { error } = await supabase
+        .from('nutrition_logs')
+        .update({
+          total_calories: totals.calories,
+          total_protein_g: totals.protein,
+          total_carbs_g: totals.carbs,
+          total_fat_g: totals.fat,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', nutritionLogId);
+        
+      if (error) throw error;
+      
+      console.log('Updated nutrition log totals:', totals);
+      return true;
+    } catch (error) {
+      console.error('Error updating nutrition log totals:', error);
+      return false;
     }
   }
 
@@ -237,6 +277,47 @@ export class NutritionService {
     }
   }
 
+  static async getNutritionLogsByDate(userId: string, date: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('meal_logs')
+        .select(`
+          *,
+          nutrition_logs!inner(log_date, user_id)
+        `)
+        .eq('nutrition_logs.user_id', userId)
+        .eq('nutrition_logs.log_date', date)
+        .order('consumed_at', { ascending: false });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching nutrition logs by date:', error);
+      return [];
+    }
+  }
+
+  static async getNutritionLogsByDateRange(userId: string, startDate: string, endDate: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('nutrition_logs')
+        .select(`
+          *,
+          meal_logs(*)
+        `)
+        .eq('user_id', userId)
+        .gte('log_date', startDate)
+        .lte('log_date', endDate)
+        .order('log_date', { ascending: true });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching nutrition logs by date range:', error);
+      return [];
+    }
+  }
+
   static async getMealLogsForDate(userId: string, date: string): Promise<MealLog[]> {
     try {
       // First get the nutrition log for the date
@@ -251,6 +332,53 @@ export class NutritionService {
     } catch (error) {
       console.error('Error fetching meal logs for date:', error);
       return [];
+    }
+  }
+
+  static async getMealPlans(nutritionPlanId: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('meal_plans')
+        .select('*')
+        .eq('nutrition_plan_id', nutritionPlanId)
+        .order('order_index', { ascending: true });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching meal plans:', error);
+      return [];
+    }
+  }
+
+  static async deleteMealLog(logId: string): Promise<boolean> {
+    try {
+      // First get the meal log to find the nutrition_log_id
+      const { data: mealLog, error: fetchError } = await supabase
+        .from('meal_logs')
+        .select('nutrition_log_id')
+        .eq('id', logId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      // Delete the meal log
+      const { error } = await supabase
+        .from('meal_logs')
+        .delete()
+        .eq('id', logId);
+        
+      if (error) throw error;
+      
+      // Update the nutrition log totals after deletion
+      if (mealLog?.nutrition_log_id) {
+        await this.updateNutritionLogTotals(mealLog.nutrition_log_id);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting meal log:', error);
+      return false;
     }
   }
 

@@ -6,12 +6,28 @@ import { cn } from "@/lib/utils";
 
 interface HeroCTACardProps {
   workout?: any;
+  nextWorkout?: {
+    schedule: any;
+    dayName: string;
+    dateDisplay: string;
+    isTomorrow: boolean;
+    workoutPlan?: any;
+  } | null;
   onStartWorkout: () => void;
   onAddWorkout: () => void;
   isLoading?: boolean;
+  isLoadingNextWorkout?: boolean;
 }
 
-export function HeroCTACard({ workout, onStartWorkout, onAddWorkout, isLoading }: HeroCTACardProps) {
+export function HeroCTACard({ workout, nextWorkout, onStartWorkout, onAddWorkout, isLoading, isLoadingNextWorkout }: HeroCTACardProps) {
+  // Debug logging
+  console.log('🔍 HeroCTACard Debug:', {
+    workout,
+    nextWorkout,
+    nextWorkoutPlan: nextWorkout?.workoutPlan,
+    workoutTitle: nextWorkout?.workoutPlan?.title
+  });
+
   if (isLoading) {
     return (
       <Card className="bg-gradient-to-r from-violet-600 to-indigo-600 border-0 shadow-xl">
@@ -30,22 +46,52 @@ export function HeroCTACard({ workout, onStartWorkout, onAddWorkout, isLoading }
       <Card className="bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 border-0 shadow-xl">
         <CardContent className="p-6">
           <div className="text-center">
-            <div className="w-16 h-16 bg-slate-300 dark:bg-slate-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Plus className="h-8 w-8 text-slate-600 dark:text-slate-300" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
-              No Workout Scheduled
-            </h3>
-            <p className="text-slate-600 dark:text-slate-300 mb-4">
-              Let's add a workout to keep your momentum going!
-            </p>
-            <Button 
-              onClick={onAddWorkout}
-              className="bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-3 rounded-xl"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              Add Workout
-            </Button>
+            {nextWorkout ? (
+              <>
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Dumbbell className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                  {nextWorkout.isTomorrow ? "Tomorrow's Workout" : "Next Workout"}
+                </h3>
+                <p className="text-slate-600 dark:text-slate-300 mb-2">
+                  {nextWorkout.dayName} • {nextWorkout.dateDisplay}
+                </p>
+                <h4 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4">
+                  {isLoadingNextWorkout ? (
+                    <span className="animate-pulse">Loading workout details...</span>
+                  ) : (
+                    nextWorkout.workoutPlan?.title || nextWorkout.workoutPlan?.name || "Scheduled Workout"
+                  )}
+                </h4>
+                <Button 
+                  onClick={onAddWorkout}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-3 rounded-xl"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Add Today's Workout
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-slate-300 dark:bg-slate-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus className="h-8 w-8 text-slate-600 dark:text-slate-300" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                  No Workout Scheduled
+                </h3>
+                <p className="text-slate-600 dark:text-slate-300 mb-4">
+                  Let's add a workout to keep your momentum going!
+                </p>
+                <Button 
+                  onClick={onAddWorkout}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-3 rounded-xl"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Add Workout
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

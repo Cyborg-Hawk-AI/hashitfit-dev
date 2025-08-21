@@ -344,6 +344,22 @@ CREATE TABLE IF NOT EXISTS user_settings (
 -- Create index on user_settings
 CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
 
+-- USER RECOMMENDATIONS TABLE
+-- Stores AI-generated personalized recommendations for users
+CREATE TABLE IF NOT EXISTS user_recommendations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  workout_tips TEXT,
+  nutrition_tips TEXT,
+  weekly_goals TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- Create indexes on user_recommendations
+CREATE INDEX idx_user_recommendations_user_id ON user_recommendations(user_id);
+CREATE INDEX idx_user_recommendations_created_at ON user_recommendations(created_at);
+
 -- Enable Row Level Security on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fitness_assessments ENABLE ROW LEVEL SECURITY;
@@ -359,6 +375,7 @@ ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_recommendations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assessment_data ENABLE ROW LEVEL SECURITY;
 
 -- Create Row Level Security Policies
@@ -631,6 +648,19 @@ CREATE POLICY "Users can update own settings"
   ON user_settings FOR UPDATE 
   USING (auth.uid() = user_id);
 
+-- User Recommendations RLS
+CREATE POLICY "Users can view own recommendations" 
+  ON user_recommendations FOR SELECT 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own recommendations" 
+  ON user_recommendations FOR INSERT 
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own recommendations" 
+  ON user_recommendations FOR UPDATE 
+  USING (auth.uid() = user_id);
+
 -- Create trigger functions for updated_at timestamps
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
@@ -699,6 +729,10 @@ CREATE TRIGGER update_user_settings_modtime
 
 CREATE TRIGGER update_assessment_data_modtime
   BEFORE UPDATE ON assessment_data
+  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_user_recommendations_modtime
+  BEFORE UPDATE ON user_recommendations
   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 -- Create function to create user profile on signup

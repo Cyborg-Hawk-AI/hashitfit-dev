@@ -4,20 +4,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Dumbbell, UtensilsCrossed, ChevronDown, ChevronUp } from "lucide-react";
 
-interface CompletedItem {
+interface DailyItem {
   type: 'workout' | 'meal' | 'habit';
   name: string;
   time: string;
   completed: boolean;
+  scheduledTime?: string;
 }
 
-interface CompletedItemsListProps {
-  items: CompletedItem[];
+interface DailyItemsListProps {
+  completedItems: DailyItem[];
+  pendingItems: DailyItem[];
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  isLoading?: boolean;
 }
 
-export function CompletedItemsList({ items, isCollapsed = false, onToggleCollapse }: CompletedItemsListProps) {
+export function DailyItemsList({ completedItems, pendingItems, isCollapsed = false, onToggleCollapse, isLoading = false }: DailyItemsListProps) {
   const [localCollapsed, setLocalCollapsed] = useState(isCollapsed);
   
   const handleToggle = () => {
@@ -46,7 +49,7 @@ export function CompletedItemsList({ items, isCollapsed = false, onToggleCollaps
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-bold text-slate-800 dark:text-white flex items-center">
-            ✅ Completed Today
+            📅 Today's Progress
           </CardTitle>
           <Button
             variant="ghost"
@@ -61,27 +64,88 @@ export function CompletedItemsList({ items, isCollapsed = false, onToggleCollaps
       {!collapsed && (
         <CardContent className="pt-0">
           <div className="space-y-3">
-            {items.length === 0 ? (
-              <p className="text-slate-500 dark:text-slate-400 text-sm text-center py-4">
-                Nothing completed yet today. Let's get started! 💪
-              </p>
-            ) : (
-              items.map((item, index) => (
-                <div key={index} className="flex items-center space-x-3 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                  <div className="p-1 bg-white dark:bg-slate-600 rounded-full">
-                    {getIcon(item.type)}
-                  </div>
+            {isLoading ? (
+              <div className="animate-pulse space-y-3">
+                <div className="flex items-center space-x-3 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                  <div className="p-1 bg-white dark:bg-slate-600 rounded-full w-6 h-6"></div>
                   <div className="flex-1">
-                    <p className="font-medium text-slate-800 dark:text-white text-sm">
-                      {item.name}
-                    </p>
-                    <p className="text-slate-500 dark:text-slate-400 text-xs">
-                      {item.time}
-                    </p>
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-1"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                   </div>
-                  <CheckCircle className="h-5 w-5 text-emerald-500" />
                 </div>
-              ))
+                <div className="flex items-center space-x-3 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                  <div className="p-1 bg-white dark:bg-slate-600 rounded-full w-6 h-6"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-1"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Completed Items Section */}
+                {completedItems.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center">
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Completed ({completedItems.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {completedItems.map((item, index) => (
+                        <div key={`completed-${index}`} className="flex items-center space-x-3 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                          <div className="p-1 bg-emerald-100 dark:bg-emerald-800 rounded-full">
+                            {getIcon(item.type)}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800 dark:text-white text-sm">
+                              {item.name}
+                            </p>
+                            <p className="text-emerald-600 dark:text-emerald-400 text-xs">
+                              Completed at {item.time}
+                            </p>
+                          </div>
+                          <CheckCircle className="h-5 w-5 text-emerald-500" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pending Items Section */}
+                {pendingItems.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-2 flex items-center">
+                      <div className="h-4 w-4 mr-1 rounded-full border-2 border-amber-500"></div>
+                      Pending ({pendingItems.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {pendingItems.map((item, index) => (
+                        <div key={`pending-${index}`} className="flex items-center space-x-3 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                          <div className="p-1 bg-amber-100 dark:bg-amber-800 rounded-full">
+                            {getIcon(item.type)}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800 dark:text-white text-sm">
+                              {item.name}
+                            </p>
+                            <p className="text-amber-600 dark:text-amber-400 text-xs">
+                              {item.scheduledTime ? `Scheduled for ${item.scheduledTime}` : 'Not scheduled'}
+                            </p>
+                          </div>
+                          <div className="h-5 w-5 rounded-full border-2 border-amber-400"></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {completedItems.length === 0 && pendingItems.length === 0 && (
+                  <p className="text-slate-500 dark:text-slate-400 text-sm text-center py-4">
+                    No activities scheduled for today. Let's add some! 💪
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </CardContent>

@@ -265,6 +265,63 @@ export class WorkoutService {
     }
   }
 
+  static async getWorkoutLogsByDate(userId: string, date: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('workout_logs')
+        .select(`
+          *,
+          workout_plans(title, description)
+        `)
+        .eq('user_id', userId)
+        .gte('start_time', `${date}T00:00:00`)
+        .lt('start_time', `${date}T23:59:59`)
+        .order('start_time', { ascending: false });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching workout logs by date:', error);
+      return [];
+    }
+  }
+
+  static async getWorkoutLogsByDateRange(userId: string, startDate: string, endDate: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('workout_logs')
+        .select(`
+          *,
+          workout_plans(title, description, category)
+        `)
+        .eq('user_id', userId)
+        .gte('start_time', `${startDate}T00:00:00`)
+        .lte('start_time', `${endDate}T23:59:59`)
+        .order('start_time', { ascending: true });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching workout logs by date range:', error);
+      return [];
+    }
+  }
+
+  static async deleteWorkoutLog(logId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('workout_logs')
+        .delete()
+        .eq('id', logId);
+        
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting workout log:', error);
+      return false;
+    }
+  }
+
   static async getExerciseLogs(workoutLogId: string): Promise<ExerciseLog[]> {
     try {
       const { data, error } = await supabase
@@ -405,7 +462,10 @@ export class WorkoutService {
     try {
       const { data, error } = await supabase
         .from('workout_schedule')
-        .select('*')
+        .select(`
+          *,
+          workout_plans(title, description, category)
+        `)
         .eq('user_id', userId)
         .gte('scheduled_date', startDate)
         .lte('scheduled_date', endDate)
