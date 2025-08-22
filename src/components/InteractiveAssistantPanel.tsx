@@ -12,7 +12,8 @@ import {
   Zap,
   CheckCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Loader2
 } from "lucide-react";
 
 interface WorkoutDistribution {
@@ -37,6 +38,7 @@ interface InteractiveAssistantPanelProps {
   onAutoPlanWeek: (difficulty: string) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  optimizationLoading?: boolean;
 }
 
 export function InteractiveAssistantPanel({
@@ -46,7 +48,8 @@ export function InteractiveAssistantPanel({
   onApplySuggestions,
   onAutoPlanWeek,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  optimizationLoading = false
 }: InteractiveAssistantPanelProps) {
   const [localCollapsed, setLocalCollapsed] = useState(isCollapsed);
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
@@ -196,10 +199,20 @@ export function InteractiveAssistantPanel({
           <div className="grid grid-cols-1 gap-3">
             <Button 
               onClick={onOptimizeWeek}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={optimizationLoading}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
             >
-              <Wand2 className="h-4 w-4 mr-2" />
-              ✨ Optimize This Week
+              {optimizationLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  ✨ Optimize This Week
+                </>
+              )}
             </Button>
             
             <div className="grid grid-cols-2 gap-2">

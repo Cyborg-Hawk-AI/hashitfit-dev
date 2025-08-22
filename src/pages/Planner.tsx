@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { WorkoutService } from "@/lib/supabase/services/WorkoutService";
 import { NutritionService } from "@/lib/supabase/services/NutritionService";
+import { AssessmentService } from "@/lib/supabase/services/AssessmentService";
+import { ProgressService } from "@/lib/supabase/services/ProgressService";
 import { format, startOfWeek, endOfWeek, addDays, parseISO, isSameDay } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { InteractiveAssistantPanel } from "@/components/InteractiveAssistantPanel";
@@ -20,8 +22,10 @@ import { EnhancedDailySummaryCard } from "@/components/EnhancedDailySummaryCard"
 import { PrescriptiveWeeklySummary } from "@/components/PrescriptiveWeeklySummary";
 import { ComingUpPreview } from "@/components/ComingUpPreview";
 import { InteractiveGoalsCard } from "@/components/InteractiveGoalsCard";
-import { Plus } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
+import { useQueryClient } from "@tanstack/react-query";
+import supabase from "@/lib/supabase";
 
 export default function PlannerPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -30,9 +34,11 @@ export default function PlannerPage() {
   const [selectedDayData, setSelectedDayData] = useState<any>(null);
   const [aiInsights, setAIInsights] = useState<any[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
+  const [optimizationLoading, setOptimizationLoading] = useState(false);
   const { toast } = useToast();
   const { userId } = useAuth();
   const { scheduleWorkoutMutation } = useDashboardMutations();
+  const queryClient = useQueryClient();
   
   // Collapse state management
   const [collapsedSections, setCollapsedSections] = useState({
@@ -69,6 +75,283 @@ export default function PlannerPage() {
 
   const [weeklyTheme, setWeeklyTheme] = useState<string>('Consistency');
   const [momentumState, setMomentumState] = useState<'up' | 'steady' | 'down'>('up');
+
+  // Data collection for AI optimization
+  const collectOptimizationData = async (userId: string) => {
+    const today = new Date();
+    const fourDaysAgo = new Date(today);
+    fourDaysAgo.setDate(today.getDate() - 4);
+    
+    // 1. Get user assessment data
+    const assessment = await AssessmentService.getAssessment(userId);
+    
+    // 2. Get last 4 days of workout logs with detailed exercise data
+    const { data: recentWorkoutLogs } = await supabase
+      .from('workout_logs')
+      .select(`
+        *,
+        workout_plans(title, description, category, target_muscles),
+        exercise_logs(
+          exercise_name,
+          sets_completed,
+          reps_completed,
+          weight_used,
+          rest_seconds,
+          notes
+        )
+      `)
+      .eq('user_id', userId)
+      .gte('start_time', fourDaysAgo.toISOString())
+      .lte('start_time', today.toISOString())
+      .order('start_time', { ascending: true });
+
+    // 3. Get current week's schedule
+    const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
+    const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
+    
+    const { data: currentWeekSchedule } = await supabase
+      .from('workout_schedule')
+      .select(`
+        *,
+        workout_plans(title, description, category, target_muscles)
+      `)
+      .eq('user_id', userId)
+      .gte('scheduled_date', format(startOfCurrentWeek, 'yyyy-MM-dd'))
+      .lte('scheduled_date', format(endOfCurrentWeek, 'yyyy-MM-dd'))
+      .order('scheduled_date', { ascending: true });
+
+    // 4. Get recent nutrition data
+    const { data: recentNutritionLogs } = await supabase
+      .from('nutrition_logs')
+      .select(`
+        *,
+        meal_logs(*)
+      `)
+      .eq('user_id', userId)
+      .gte('log_date', format(fourDaysAgo, 'yyyy-MM-dd'))
+      .lte('log_date', format(today, 'yyyy-MM-dd'))
+      .order('log_date', { ascending: true });
+
+    // 5. Get latest fitness assessment
+    const latestAssessment = await ProgressService.getLatestFitnessAssessment(userId);
+
+    // 6. Calculate workout patterns and fatigue indicators
+    const workoutAnalysis = analyzeRecentWorkouts(recentWorkoutLogs || []);
+    
+    // 7. Determine remaining days in the week
+    const remainingDays = getRemainingWeekDays(today);
+
+    return {
+      user_profile: {
+        age: assessment?.age || 30,
+        gender: assessment?.gender || 'male',
+        height: assessment?.height || 175,
+        weight: assessment?.weight || 75,
+        fitness_goal: assessment?.fitness_goal || 'general_fitness',
+        workout_frequency: assessment?.workout_frequency || 3,
+        equipment: assessment?.equipment || 'minimal',
+        diet: assessment?.diet || 'standard',
+        sports_played: assessment?.sports_played || [],
+        allergies: assessment?.allergies || []
+      },
+      recent_performance: {
+        workout_logs: recentWorkoutLogs || [],
+        nutrition_logs: recentNutritionLogs || [],
+        fitness_assessment: latestAssessment,
+        workout_analysis: workoutAnalysis
+      },
+      current_week: {
+        schedule: currentWeekSchedule || [],
+        completed_workouts: recentWorkoutLogs?.filter(log => 
+          new Date(log.start_time) >= startOfCurrentWeek
+        ) || [],
+        remaining_days: remainingDays
+      },
+      optimization_context: {
+        days_analyzed: 4,
+        current_day: format(today, 'EEEE'),
+        week_progress: calculateWeekProgress(currentWeekSchedule || [], recentWorkoutLogs || [])
+      }
+    };
+  };
+
+  // Helper functions for workout analysis
+  const analyzeRecentWorkouts = (workoutLogs: any[]) => {
+    const analysis = {
+      total_workouts: workoutLogs.length,
+      muscle_groups_trained: new Set<string>(),
+      average_rating: 0,
+      total_duration: 0,
+      fatigue_indicators: {
+        declining_ratings: false,
+        reduced_volume: false,
+        missed_workouts: false
+      },
+      performance_trends: {
+        strength_progress: 'stable',
+        endurance_progress: 'stable',
+        consistency_score: 0
+      },
+      recovery_needs: {
+        rest_days_needed: 0,
+        active_recovery_recommended: false,
+        intensity_adjustment: 'maintain'
+      }
+    };
+
+    if (workoutLogs.length === 0) return analysis;
+
+    // Analyze muscle groups trained
+    workoutLogs.forEach(log => {
+      if (log.workout_plans?.target_muscles) {
+        log.workout_plans.target_muscles.forEach((muscle: string) => 
+          analysis.muscle_groups_trained.add(muscle)
+        );
+      }
+    });
+
+    // Calculate average rating and duration
+    const ratings = workoutLogs.map(log => log.rating).filter(r => r);
+    analysis.average_rating = ratings.length > 0 
+      ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length 
+      : 0;
+
+    // Check for fatigue indicators
+    if (workoutLogs.length >= 2) {
+      const recentRatings = workoutLogs.slice(-2).map(log => log.rating).filter(r => r);
+      if (recentRatings.length >= 2 && recentRatings[0] > recentRatings[1]) {
+        analysis.fatigue_indicators.declining_ratings = true;
+      }
+    }
+
+    // Determine recovery needs
+    if (workoutLogs.length >= 3) {
+      analysis.recovery_needs.rest_days_needed = 1;
+      analysis.recovery_needs.active_recovery_recommended = true;
+    }
+
+    return analysis;
+  };
+
+  const getRemainingWeekDays = (today: Date) => {
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const currentDay = format(today, 'EEEE');
+    const currentIndex = daysOfWeek.indexOf(currentDay);
+    
+    return daysOfWeek.slice(currentIndex + 1);
+  };
+
+  const calculateWeekProgress = (schedule: any[], completedWorkouts: any[]) => {
+    const totalScheduled = schedule.length;
+    const completed = completedWorkouts.length;
+    
+    return {
+      completion_rate: totalScheduled > 0 ? (completed / totalScheduled) * 100 : 0,
+      workouts_completed: completed,
+      workouts_scheduled: totalScheduled,
+      days_remaining: 7 - new Date().getDay()
+    };
+  };
+
+  // Call AI optimization edge function
+  const callWeekOptimizationAI = async (optimizationData: any) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('No active session');
+    }
+
+    const response = await fetch(`${process.env.VITE_SUPABASE_URL}/functions/v1/week-optimization`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        optimization_data: optimizationData
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to optimize week: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  };
+
+  // Apply optimized suggestions
+  const applyOptimizedSuggestions = async (suggestions: any[]) => {
+    for (const suggestion of suggestions) {
+      // Create workout plan for the suggested day
+      const workoutPlan = {
+        user_id: userId,
+        title: suggestion.workout_type === 'strength' 
+          ? `${suggestion.focus_area} Strength`
+          : suggestion.workout_type === 'cardio'
+          ? 'Cardio Session'
+          : 'Active Recovery',
+        description: suggestion.reasoning,
+        category: suggestion.workout_type,
+        difficulty: suggestion.intensity === 'high' ? 4 : suggestion.intensity === 'moderate' ? 3 : 2,
+        estimated_duration: '45 minutes',
+        target_muscles: [suggestion.focus_area],
+        ai_generated: true
+      };
+
+      // Create the workout plan
+      const { data: createdPlan } = await supabase
+        .from('workout_plans')
+        .insert(workoutPlan)
+        .select()
+        .single();
+
+      if (createdPlan && suggestion.exercises) {
+        // Add exercises to the plan
+        const exercises = suggestion.exercises.map((ex: any, index: number) => ({
+          workout_plan_id: createdPlan.id,
+          name: ex.name,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight: ex.weight,
+          rest_time: ex.rest_seconds ? `${ex.rest_seconds} seconds` : '60 seconds',
+          notes: ex.notes,
+          order_index: index
+        }));
+
+        await supabase
+          .from('workout_exercises')
+          .insert(exercises);
+
+        // Schedule the workout for the suggested day
+        const suggestedDate = getDateForDay(suggestion.day);
+        
+        await supabase
+          .from('workout_schedule')
+          .insert({
+            user_id: userId,
+            workout_plan_id: createdPlan.id,
+            scheduled_date: format(suggestedDate, 'yyyy-MM-dd'),
+            is_completed: false
+          });
+      }
+    }
+  };
+
+  const getDateForDay = (dayName: string) => {
+    const today = new Date();
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const targetDayIndex = daysOfWeek.indexOf(dayName);
+    const currentDayIndex = today.getDay();
+    
+    let daysToAdd = targetDayIndex - currentDayIndex;
+    if (daysToAdd <= 0) daysToAdd += 7; // Next occurrence of that day
+    
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysToAdd);
+    
+    return targetDate;
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -207,19 +490,59 @@ export default function PlannerPage() {
   }, []);
 
   const handleOptimizeWeek = async () => {
+    if (!userId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to optimize your week.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     toast({
       title: "AI Coach Optimization",
-      description: "Analyzing your week and generating personalized recommendations...",
+      description: "Analyzing your recent workouts and generating personalized recommendations...",
     });
-    
-    // Simulate AI analysis
-    setTimeout(() => {
-      setSuggestions([
-        { day: "Thursday", title: "Lower Body Strength", type: "strength", reason: "Balance upper body focus" },
-        { day: "Friday", title: "Active Recovery Walk", type: "recovery", reason: "Prevent overtraining" },
-        { day: "Sunday", title: "HIIT Cardio", type: "cardio", reason: "Boost weekly cardio" }
-      ]);
-    }, 2000);
+
+    try {
+      // Show loading state
+      setOptimizationLoading(true);
+      
+      // Collect data and call AI
+      const optimizationData = await collectOptimizationData(userId);
+      const result = await callWeekOptimizationAI(optimizationData);
+      
+      if (result.success) {
+        // Apply suggestions
+        await applyOptimizedSuggestions(result.suggestions);
+        
+        // Update local state
+        setSuggestions(result.suggestions.map(s => ({
+          day: s.day,
+          title: s.workout_type === 'strength' ? `${s.focus_area} Strength` : s.workout_type,
+          type: s.workout_type,
+          reason: s.reasoning
+        })));
+        
+        toast({
+          title: "Week Optimized!",
+          description: "Your personalized workout plan has been updated based on your recent performance.",
+        });
+        
+        // Refresh data
+        queryClient.invalidateQueries(['workoutSchedules']);
+        queryClient.invalidateQueries(['weeklyWorkouts']);
+      }
+    } catch (error) {
+      console.error('Error optimizing week:', error);
+      toast({
+        title: "Optimization Failed",
+        description: "Unable to optimize your week. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setOptimizationLoading(false);
+    }
   };
 
   const handleAutoPlanWeek = async (difficulty: string) => {
@@ -368,6 +691,7 @@ export default function PlannerPage() {
           onAutoPlanWeek={handleAutoPlanWeek}
           isCollapsed={collapsedSections.aiAssistant}
           onToggleCollapse={() => toggleSection('aiAssistant')}
+          optimizationLoading={optimizationLoading}
         />
         
         {/* Section Separator */}
