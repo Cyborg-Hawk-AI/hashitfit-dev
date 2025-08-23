@@ -41,6 +41,7 @@ export default function PlannerPage() {
   const [showEasyPlanModal, setShowEasyPlanModal] = useState(false);
   const [showAddSecondaryWorkoutModal, setShowAddSecondaryWorkoutModal] = useState(false);
   const [showSwapWorkoutModal, setShowSwapWorkoutModal] = useState(false);
+  const [lastSwappedWorkoutId, setLastSwappedWorkoutId] = useState<string | null>(null);
   const { toast } = useToast();
   const { userId } = useAuth();
   const { scheduleWorkoutMutation } = useDashboardMutations();
@@ -463,7 +464,9 @@ export default function PlannerPage() {
           );
           console.log('📊 Sorted schedules:', sortedSchedules);
           
-          // First workout is primary, rest are secondary
+          // Process all workouts and determine primary vs secondary
+          const processedWorkouts = [];
+          
           for (let i = 0; i < sortedSchedules.length; i++) {
             const schedule = sortedSchedules[i];
             console.log(`🏋️ Processing schedule ${i + 1}/${sortedSchedules.length}:`, schedule);
@@ -489,17 +492,35 @@ export default function PlannerPage() {
               };
               
               console.log('🏋️ Processed workout data:', workoutData);
-              
-              if (i === 0) {
-                primaryWorkout = workoutData;
-                console.log('🥇 Set as primary workout');
-              } else {
-                secondaryWorkouts.push(workoutData);
-                console.log('🥈 Added to secondary workouts');
-              }
+              processedWorkouts.push(workoutData);
             } else {
               console.log('❌ No workout plan found for schedule:', schedule);
             }
+          }
+          
+          // Determine primary vs secondary workouts
+          if (processedWorkouts.length > 0) {
+            // If we have a recently swapped workout, prioritize it as primary
+            if (lastSwappedWorkoutId) {
+              console.log('🏷️ Looking for recently swapped workout ID:', lastSwappedWorkoutId);
+              const swappedWorkoutIndex = processedWorkouts.findIndex(w => w.id === lastSwappedWorkoutId);
+              
+              if (swappedWorkoutIndex !== -1) {
+                // Move the swapped workout to the front
+                const swappedWorkout = processedWorkouts.splice(swappedWorkoutIndex, 1)[0];
+                processedWorkouts.unshift(swappedWorkout);
+                console.log('🥇 Prioritized swapped workout as primary:', swappedWorkout.title);
+              } else {
+                console.log('⚠️ Swapped workout not found in processed workouts');
+              }
+            }
+            
+            // First workout is primary, rest are secondary
+            primaryWorkout = processedWorkouts[0];
+            secondaryWorkouts = processedWorkouts.slice(1);
+            
+            console.log('🥇 Final primary workout:', primaryWorkout?.title);
+            console.log('🥈 Final secondary workouts:', secondaryWorkouts.map(w => w.title));
           }
         } else {
           console.log('📭 No scheduled workouts found for date:', dateStr);
@@ -529,6 +550,12 @@ export default function PlannerPage() {
         console.log('📊 Final day data to set:', finalDayData);
         setSelectedDayData(finalDayData);
         console.log('✅ selectedDayData state updated');
+        
+        // Clear the lastSwappedWorkoutId after using it
+        if (lastSwappedWorkoutId) {
+          console.log('🧹 Clearing lastSwappedWorkoutId after use');
+          setLastSwappedWorkoutId(null);
+        }
         
       } catch (error) {
         console.error("❌ Error loading day data:", error);
@@ -719,8 +746,15 @@ export default function PlannerPage() {
     console.log('✅ Query invalidation completed');
   };
 
-  const handleWorkoutSwapped = () => {
+  const handleWorkoutSwapped = (newWorkoutId?: string) => {
     console.log('🔄 handleWorkoutSwapped called - refreshing data...');
+    
+    // Track the newly swapped workout ID
+    if (newWorkoutId) {
+      console.log('🏷️ Tracking swapped workout ID:', newWorkoutId);
+      setLastSwappedWorkoutId(newWorkoutId);
+    }
+    
     console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData');
     
     // Refresh the data after a workout is swapped
