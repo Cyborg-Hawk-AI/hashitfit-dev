@@ -122,17 +122,24 @@ export default function PlannerPage() {
       .lte('scheduled_date', format(endOfCurrentWeek, 'yyyy-MM-dd'))
       .order('scheduled_date', { ascending: true });
 
-    // 4. Get recent nutrition data
-    const { data: recentNutritionLogs } = await supabase
-      .from('nutrition_logs')
-      .select(`
-        *,
-        meal_logs(*)
-      `)
-      .eq('user_id', userId)
-      .gte('log_date', format(fourDaysAgo, 'yyyy-MM-dd'))
-      .lte('log_date', format(today, 'yyyy-MM-dd'))
-      .order('log_date', { ascending: true });
+    // 4. Get recent nutrition data (handle potential 406 error)
+    let recentNutritionLogs = null;
+    try {
+      const { data: nutritionData } = await supabase
+        .from('nutrition_logs')
+        .select(`
+          *,
+          meal_logs(*)
+        `)
+        .eq('user_id', userId)
+        .gte('log_date', format(fourDaysAgo, 'yyyy-MM-dd'))
+        .lte('log_date', format(today, 'yyyy-MM-dd'))
+        .order('log_date', { ascending: true });
+      recentNutritionLogs = nutritionData;
+    } catch (error) {
+      console.warn('Could not fetch nutrition logs:', error);
+      recentNutritionLogs = [];
+    }
 
     // 5. Get latest fitness assessment (handle potential 406 error)
     let latestAssessment = null;

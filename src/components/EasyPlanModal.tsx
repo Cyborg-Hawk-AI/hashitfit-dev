@@ -111,6 +111,8 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
 
     setIsAdopting(true);
     try {
+      console.log('Starting to adopt easy plan for user:', userId);
+      console.log('Easy plan data:', easyPlan);
       // Clear existing workout schedule for the week
       const startOfWeek = new Date();
       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1); // Monday
@@ -127,8 +129,14 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
       // Create new workout plans and schedule them
       const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       
+      console.log('Processing easy plan days:', Object.keys(easyPlan.easy_plan));
+      
       for (const [dayName, dayPlan] of Object.entries(easyPlan.easy_plan)) {
-        if (dayPlan.exercises.length === 0) continue;
+        console.log(`Processing day: ${dayName}`, dayPlan);
+        if (dayPlan.exercises.length === 0) {
+          console.log(`Skipping ${dayName} - no exercises`);
+          continue;
+        }
 
         // Create workout plan
         const workoutPlan = {
@@ -137,18 +145,24 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
           description: dayPlan.rationale,
           category: dayPlan.focus,
           difficulty: 1, // Easy difficulty
-          estimated_duration: '30 minutes',
+          estimated_duration: '00:30:00', // INTERVAL format: HH:MM:SS
           target_muscles: [dayPlan.focus],
           ai_generated: true
         };
 
-        const { data: createdPlan } = await supabase
+        const { data: createdPlan, error: planError } = await supabase
           .from('workout_plans')
           .insert(workoutPlan)
           .select()
           .single();
 
+        if (planError) {
+          console.error('Error creating workout plan:', planError);
+          throw new Error(`Failed to create workout plan: ${planError.message}`);
+        }
+
         if (createdPlan) {
+          console.log(`Created workout plan: ${createdPlan.id} for ${dayName}`);
           // Add exercises to the plan
           const exercises = dayPlan.exercises.map((ex, index) => ({
             workout_plan_id: createdPlan.id,
@@ -156,14 +170,19 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
             sets: ex.sets,
             reps: ex.reps,
             weight: 'bodyweight',
-            rest_time: '90 seconds',
+            rest_time: '00:01:30', // INTERVAL format: HH:MM:SS (90 seconds)
             notes: ex.notes,
             order_index: index
           }));
 
-          await supabase
+          const { error: exerciseError } = await supabase
             .from('workout_exercises')
             .insert(exercises);
+
+          if (exerciseError) {
+            console.error('Error creating exercises:', exerciseError);
+            throw new Error(`Failed to create exercises: ${exerciseError.message}`);
+          }
 
           // Schedule the workout
           const dayIndex = dayNames.indexOf(dayName);
@@ -171,7 +190,7 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
             const scheduledDate = new Date(startOfWeek);
             scheduledDate.setDate(startOfWeek.getDate() + dayIndex);
             
-            await supabase
+            const { error: scheduleError } = await supabase
               .from('workout_schedule')
               .insert({
                 user_id: userId,
@@ -179,6 +198,11 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
                 scheduled_date: format(scheduledDate, 'yyyy-MM-dd'),
                 is_completed: false
               });
+
+            if (scheduleError) {
+              console.error('Error scheduling workout:', scheduleError);
+              throw new Error(`Failed to schedule workout: ${scheduleError.message}`);
+            }
           }
         }
       }
