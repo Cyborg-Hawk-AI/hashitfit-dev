@@ -22,10 +22,11 @@ import { EnhancedDailySummaryCard } from "@/components/EnhancedDailySummaryCard"
 import { PrescriptiveWeeklySummary } from "@/components/PrescriptiveWeeklySummary";
 import { ComingUpPreview } from "@/components/ComingUpPreview";
 import { InteractiveGoalsCard } from "@/components/InteractiveGoalsCard";
-import { Plus, Loader2 } from "lucide-react";
+import { EasyPlanModal } from "@/components/EasyPlanModal";
+import { Plus, Loader2, Zap } from "lucide-react";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
 import { useQueryClient } from "@tanstack/react-query";
-import supabase from "@/lib/supabase";
+import supabase, { supabaseUrl } from "@/lib/supabase";
 
 export default function PlannerPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -35,6 +36,7 @@ export default function PlannerPage() {
   const [aiInsights, setAIInsights] = useState<any[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
+  const [showEasyPlanModal, setShowEasyPlanModal] = useState(false);
   const { toast } = useToast();
   const { userId } = useAuth();
   const { scheduleWorkoutMutation } = useDashboardMutations();
@@ -132,8 +134,15 @@ export default function PlannerPage() {
       .lte('log_date', format(today, 'yyyy-MM-dd'))
       .order('log_date', { ascending: true });
 
-    // 5. Get latest fitness assessment
-    const latestAssessment = await ProgressService.getLatestFitnessAssessment(userId);
+    // 5. Get latest fitness assessment (handle potential 406 error)
+    let latestAssessment = null;
+    try {
+      latestAssessment = await ProgressService.getLatestFitnessAssessment(userId);
+    } catch (error) {
+      console.warn('Could not fetch fitness assessment, using assessment data instead:', error);
+      // Use assessment data as fallback
+      latestAssessment = assessment;
+    }
 
     // 6. Calculate workout patterns and fatigue indicators
     const workoutAnalysis = analyzeRecentWorkouts(recentWorkoutLogs || []);
@@ -260,7 +269,7 @@ export default function PlannerPage() {
       throw new Error('No active session');
     }
 
-    const response = await fetch(`${process.env.VITE_SUPABASE_URL}/functions/v1/week-optimization`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/week-optimization`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -545,6 +554,32 @@ export default function PlannerPage() {
     }
   };
 
+  const [optimizationData, setOptimizationData] = useState<any>(null);
+
+  const handleEasyPlan = async () => {
+    if (!userId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to generate an easy plan.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const data = await collectOptimizationData(userId);
+      setOptimizationData(data);
+      setShowEasyPlanModal(true);
+    } catch (error) {
+      console.error('Error preparing easy plan:', error);
+      toast({
+        title: "Error",
+        description: `Failed to prepare easy plan: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleAutoPlanWeek = async (difficulty: string) => {
     toast({
       title: "Auto-Planning Week",
@@ -693,6 +728,27 @@ export default function PlannerPage() {
           onToggleCollapse={() => toggleSection('aiAssistant')}
           optimizationLoading={optimizationLoading}
         />
+
+        {/* Easy Plan Button */}
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-green-600" />
+              <h3 className="font-semibold text-green-800">Need an Easier Plan?</h3>
+            </div>
+          </div>
+          <p className="text-sm text-green-700 mb-4">
+            Get a beginner-friendly workout plan tailored to your current fitness level and goals.
+          </p>
+          <Button
+            onClick={handleEasyPlan}
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+            size="sm"
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Generate Easy Plan
+          </Button>
+        </div>
         
         {/* Section Separator */}
         <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
@@ -803,6 +859,13 @@ export default function PlannerPage() {
         onClose={() => setShowAddWorkout(false)}
         onAddWorkout={handleWorkoutSelected}
         selectedDay={format(selectedDate, 'EEEE')}
+      />
+
+      {/* Easy Plan Modal */}
+      <EasyPlanModal
+        isOpen={showEasyPlanModal}
+        onClose={() => setShowEasyPlanModal(false)}
+        optimizationData={optimizationData}
       />
     </div>
   );

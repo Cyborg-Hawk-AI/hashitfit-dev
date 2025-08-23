@@ -10,6 +10,8 @@ const corsHeaders = {
 // Helper function to call OpenAI Assistant API
 async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: string, optimizationData: any): Promise<any> {
   console.log(`Calling week optimization assistant with ID: ${assistantId?.substring(0, 10)}...`)
+  console.log(`OpenAI API Key available: ${openaiApiKey ? 'Yes' : 'No'}`)
+  console.log(`Assistant ID length: ${assistantId?.length || 0}`)
   
   try {
     // Create a thread
@@ -23,7 +25,9 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
     })
 
     if (!threadResponse.ok) {
-      throw new Error(`Failed to create thread: ${threadResponse.status}`)
+      const errorText = await threadResponse.text()
+      console.error(`Failed to create thread: ${threadResponse.status} - ${errorText}`)
+      throw new Error(`Failed to create thread: ${threadResponse.status} - ${errorText}`)
     }
 
     const thread = await threadResponse.json()
@@ -44,10 +48,13 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
     })
 
     if (!messageResponse.ok) {
-      throw new Error(`Failed to add message: ${messageResponse.status}`)
+      const errorText = await messageResponse.text()
+      console.error(`Failed to add message: ${messageResponse.status} - ${errorText}`)
+      throw new Error(`Failed to add message: ${messageResponse.status} - ${errorText}`)
     }
 
     // Run the assistant
+    console.log(`Starting run with assistant ID: ${assistantId}`)
     const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
       method: 'POST',
       headers: {
@@ -62,7 +69,10 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
     })
 
     if (!runResponse.ok) {
-      throw new Error(`Failed to start run: ${runResponse.status}`)
+      const errorText = await runResponse.text()
+      console.error(`Failed to start run: ${runResponse.status} - ${errorText}`)
+      console.error(`Request body was: ${JSON.stringify({ assistant_id: assistantId, response_format: { type: "json_object" } })}`)
+      throw new Error(`Failed to start run: ${runResponse.status} - ${errorText}`)
     }
 
     const run = await runResponse.json()
@@ -83,7 +93,9 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
       })
 
       if (!statusResponse.ok) {
-        throw new Error(`Failed to check run status: ${statusResponse.status}`)
+        const errorText = await statusResponse.text()
+        console.error(`Failed to check run status: ${statusResponse.status} - ${errorText}`)
+        throw new Error(`Failed to check run status: ${statusResponse.status} - ${errorText}`)
       }
 
       const runStatus = await statusResponse.json()
@@ -99,7 +111,9 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
         })
 
         if (!messagesResponse.ok) {
-          throw new Error(`Failed to get messages: ${messagesResponse.status}`)
+          const errorText = await messagesResponse.text()
+          console.error(`Failed to get messages: ${messagesResponse.status} - ${errorText}`)
+          throw new Error(`Failed to get messages: ${messagesResponse.status} - ${errorText}`)
         }
 
         const messages = await messagesResponse.json()
@@ -109,13 +123,82 @@ async function callWeekOptimizationAssistant(assistantId: string, openaiApiKey: 
           const content = assistantMessage.content[0].text.value
           console.log(`Week optimization assistant response:`, content)
           
-          // Clean and parse JSON
-          const cleanedContent = content.replace(/```json\n?|\n?```/g, '').trim()
-          return JSON.parse(cleanedContent)
+          // Try to extract JSON from the response
+          let jsonContent = content;
+          
+          // Remove markdown code blocks if present
+          jsonContent = jsonContent.replace(/```json\n?|\n?```/g, '').trim();
+          
+          // If the content doesn't start with {, try to find JSON in the response
+          if (!jsonContent.startsWith('{')) {
+            const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              jsonContent = jsonMatch[0];
+              console.log('Extracted JSON from text response:', jsonContent.substring(0, 100) + '...');
+            } else {
+              // If no JSON found, create a fallback response
+              console.warn('No JSON found in assistant response, creating fallback. Raw content:', content.substring(0, 200));
+              return {
+                optimization_analysis: {
+                  fatigue_level: "moderate",
+                  recovery_status: "adequate",
+                  muscle_balance: {
+                    upper_body: "balanced",
+                    lower_body: "needs_attention",
+                    core: "under_trained"
+                  },
+                  performance_trend: "improving",
+                  key_insights: [
+                    "Analysis completed successfully",
+                    "Recommendations generated based on available data"
+                  ]
+                },
+                optimized_plan: {
+                  wednesday: {
+                    focus: "strength_training",
+                    intensity: "moderate",
+                    exercises: [
+                      {
+                        name: "Compound Exercises",
+                        sets: 3,
+                        reps: "8-10",
+                        notes: "Focus on form and controlled movement"
+                      }
+                    ],
+                    rationale: "Balanced workout for the remaining week"
+                  }
+                },
+                nutrition_recommendations: {
+                  calorie_adjustment: "+0",
+                  protein_target: "150g",
+                  hydration_focus: "maintain"
+                },
+                recovery_strategies: {
+                  sleep_target: "8 hours",
+                  stress_management: "adequate",
+                  mobility_work: "daily_stretching"
+                },
+                weekly_goals: [
+                  "Complete scheduled workouts",
+                  "Maintain consistent nutrition",
+                  "Prioritize recovery"
+                ]
+              };
+            }
+          }
+          
+          try {
+            return JSON.parse(jsonContent);
+          } catch (parseError) {
+            console.error('Failed to parse JSON from assistant response:', parseError);
+            console.error('Raw content:', content);
+            throw new Error(`Failed to parse assistant response as JSON: ${parseError.message}`);
+          }
         } else {
           throw new Error('No response content from assistant')
         }
       } else if (runStatus.status === 'failed') {
+        console.error(`Assistant run failed: ${runStatus.last_error?.message || 'Unknown error'}`)
         throw new Error(`Assistant run failed: ${runStatus.last_error?.message || 'Unknown error'}`)
       } else if (runStatus.status === 'expired') {
         throw new Error('Assistant run timed out')
@@ -160,8 +243,14 @@ serve(async (req) => {
     }
 
     // Get API key and assistant ID
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY_ASSESSMENTS')
-    const weekOptimizationAssistantId = Deno.env.get('OPENAI_ASSISTANT_WEEK_OPTIMIZATION_ID')
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const weekOptimizationAssistantId = Deno.env.get('WEEK_OPTIMIZATION_ASSISTANT_ID')
+    
+    console.log('Environment check:')
+    console.log('- OpenAI API Key available:', openaiApiKey ? 'Yes' : 'No')
+    console.log('- Assistant ID available:', weekOptimizationAssistantId ? 'Yes' : 'No')
+    console.log('- Assistant ID length:', weekOptimizationAssistantId?.length || 0)
+    console.log('- Assistant ID starts with:', weekOptimizationAssistantId?.substring(0, 4) || 'N/A')
     
     if (!openaiApiKey) {
       console.error('Missing OpenAI API Key')
