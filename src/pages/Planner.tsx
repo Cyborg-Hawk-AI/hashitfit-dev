@@ -23,6 +23,8 @@ import { PrescriptiveWeeklySummary } from "@/components/PrescriptiveWeeklySummar
 import { ComingUpPreview } from "@/components/ComingUpPreview";
 import { InteractiveGoalsCard } from "@/components/InteractiveGoalsCard";
 import { EasyPlanModal } from "@/components/EasyPlanModal";
+import { AddSecondaryWorkoutModal } from "@/components/AddSecondaryWorkoutModal";
+import { SwapWorkoutModal } from "@/components/SwapWorkoutModal";
 import { Plus, Loader2, Zap } from "lucide-react";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
 import { useQueryClient } from "@tanstack/react-query";
@@ -37,6 +39,8 @@ export default function PlannerPage() {
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [showEasyPlanModal, setShowEasyPlanModal] = useState(false);
+  const [showAddSecondaryWorkoutModal, setShowAddSecondaryWorkoutModal] = useState(false);
+  const [showSwapWorkoutModal, setShowSwapWorkoutModal] = useState(false);
   const { toast } = useToast();
   const { userId } = useAuth();
   const { scheduleWorkoutMutation } = useDashboardMutations();
@@ -440,24 +444,43 @@ export default function PlannerPage() {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       
       try {
-        // Load workout for the day
+        // Load workouts for the day
         const schedules = await WorkoutService.getWorkoutSchedule(userId, dateStr, dateStr);
-        let workout = null;
+        let primaryWorkout = null;
+        let secondaryWorkouts = [];
         
         if (schedules.length > 0) {
-          const schedule = schedules[0];
-          const workoutPlan = await WorkoutService.getWorkoutPlanById(schedule.workout_plan_id);
-          const exercises = await WorkoutService.getWorkoutExercises(schedule.workout_plan_id);
+          // Sort schedules by creation time to determine primary vs secondary
+          const sortedSchedules = schedules.sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
           
-          if (workoutPlan) {
-            workout = {
-              id: workoutPlan.id,
-              title: workoutPlan.title,
-              duration: 45,
-              bodyFocus: workoutPlan.target_muscles || ['Full Body'],
-              isCompleted: schedule.is_completed,
-              exercises: exercises.length
-            };
+          // First workout is primary, rest are secondary
+          for (let i = 0; i < sortedSchedules.length; i++) {
+            const schedule = sortedSchedules[i];
+            const workoutPlan = await WorkoutService.getWorkoutPlanById(schedule.workout_plan_id);
+            const exercises = await WorkoutService.getWorkoutExercises(schedule.workout_plan_id);
+            
+            if (workoutPlan) {
+              const workoutData = {
+                id: workoutPlan.id,
+                title: workoutPlan.title,
+                duration: 45,
+                bodyFocus: workoutPlan.target_muscles || ['Full Body'],
+                isCompleted: schedule.is_completed,
+                exercises: exercises.length,
+                category: workoutPlan.category,
+                difficulty: workoutPlan.difficulty,
+                estimated_duration: workoutPlan.estimated_duration,
+                ai_generated: workoutPlan.ai_generated
+              };
+              
+              if (i === 0) {
+                primaryWorkout = workoutData;
+              } else {
+                secondaryWorkouts.push(workoutData);
+              }
+            }
           }
         }
         
@@ -472,7 +495,8 @@ export default function PlannerPage() {
         ];
         
         setSelectedDayData({
-          workout,
+          workout: primaryWorkout,
+          secondaryWorkouts,
           meals: mealLogs || [],
           habits
         });
@@ -639,10 +663,29 @@ export default function PlannerPage() {
   };
 
   const handleAddAnotherSession = () => {
-    toast({
-      title: "Additional Session",
-      description: "Adding another workout session to your day!",
-    });
+    setShowAddSecondaryWorkoutModal(true);
+  };
+
+  const handleSwapWorkout = () => {
+    setShowSwapWorkoutModal(true);
+  };
+
+  const handleAddSecondaryWorkout = () => {
+    setShowAddSecondaryWorkoutModal(true);
+  };
+
+  const handleWorkoutAdded = () => {
+    // Refresh the data after a workout is added
+    queryClient.invalidateQueries(['workoutSchedules']);
+    queryClient.invalidateQueries(['weeklyWorkouts']);
+    queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+  };
+
+  const handleWorkoutSwapped = () => {
+    // Refresh the data after a workout is swapped
+    queryClient.invalidateQueries(['workoutSchedules']);
+    queryClient.invalidateQueries(['weeklyWorkouts']);
+    queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
   };
 
   const handlePreLogMeal = (date: Date) => {
@@ -786,6 +829,7 @@ export default function PlannerPage() {
           <EnhancedDailySummaryCard
             date={selectedDate}
             workout={selectedDayData.workout}
+            secondaryWorkouts={selectedDayData.secondaryWorkouts}
             meals={selectedDayData.meals}
             habits={selectedDayData.habits}
             onAddWorkout={handleAddWorkout}
@@ -802,6 +846,8 @@ export default function PlannerPage() {
             onSwapDay={handleSwapDay}
             onAddAnotherSession={handleAddAnotherSession}
             onPreLogMeal={handlePreLogMeal}
+            onSwapWorkout={handleSwapWorkout}
+            onAddSecondaryWorkout={handleAddSecondaryWorkout}
             isCollapsed={collapsedSections.dailySummary}
             onToggleCollapse={() => toggleSection('dailySummary')}
           />
@@ -873,6 +919,23 @@ export default function PlannerPage() {
         isOpen={showEasyPlanModal}
         onClose={() => setShowEasyPlanModal(false)}
         optimizationData={optimizationData}
+      />
+
+      {/* Add Secondary Workout Modal */}
+      <AddSecondaryWorkoutModal
+        isOpen={showAddSecondaryWorkoutModal}
+        onClose={() => setShowAddSecondaryWorkoutModal(false)}
+        selectedDate={selectedDate}
+        onWorkoutAdded={handleWorkoutAdded}
+      />
+
+      {/* Swap Workout Modal */}
+      <SwapWorkoutModal
+        isOpen={showSwapWorkoutModal}
+        onClose={() => setShowSwapWorkoutModal(false)}
+        selectedDate={selectedDate}
+        currentWorkout={selectedDayData?.workout}
+        onWorkoutSwapped={handleWorkoutSwapped}
       />
     </div>
   );

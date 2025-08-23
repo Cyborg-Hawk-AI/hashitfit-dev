@@ -44,6 +44,7 @@ interface Habit {
 interface EnhancedDailySummaryCardProps {
   date: Date;
   workout?: Workout;
+  secondaryWorkouts?: Workout[];
   meals: any[];
   habits: Habit[];
   onAddWorkout: () => void;
@@ -55,6 +56,8 @@ interface EnhancedDailySummaryCardProps {
   onSwapDay: (type: string) => void;
   onAddAnotherSession: () => void;
   onPreLogMeal: (date: Date) => void;
+  onSwapWorkout: () => void;
+  onAddSecondaryWorkout: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -62,6 +65,7 @@ interface EnhancedDailySummaryCardProps {
 export function EnhancedDailySummaryCard({
   date,
   workout,
+  secondaryWorkouts = [],
   meals,
   habits,
   onAddWorkout,
@@ -73,6 +77,8 @@ export function EnhancedDailySummaryCard({
   onSwapDay,
   onAddAnotherSession,
   onPreLogMeal,
+  onSwapWorkout,
+  onAddSecondaryWorkout,
   isCollapsed = false,
   onToggleCollapse
 }: EnhancedDailySummaryCardProps) {
@@ -121,53 +127,136 @@ export function EnhancedDailySummaryCard({
             </h3>
             
             {workout ? (
-              <div className="p-3 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 rounded-xl border border-red-200/50 dark:border-red-700/50">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-slate-800 dark:text-white">{workout.title}</h4>
-                  {workout.isCompleted && (
-                    <Badge className="bg-green-100 text-green-700">✓ Completed</Badge>
-                  )}
-                </div>
-                
-                <div className="flex items-center space-x-4 text-sm text-slate-600 dark:text-slate-300 mb-3">
-                  <div className="flex items-center space-x-1">
-                    <Clock className="h-3 w-3" />
-                    <span>{workout.duration}min</span>
+              <div className="space-y-3">
+                {/* Primary Workout */}
+                <div className="p-3 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 rounded-xl border border-red-200/50 dark:border-red-700/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-slate-800 dark:text-white">{workout.title}</h4>
+                      <Badge variant="outline" className="text-xs">Primary</Badge>
+                    </div>
+                    {workout.isCompleted && (
+                      <Badge className="bg-green-100 text-green-700">✓ Completed</Badge>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <Dumbbell className="h-3 w-3" />
-                    <span>{workout.exercises} exercises</span>
+                  
+                  <div className="flex items-center space-x-4 text-sm text-slate-600 dark:text-slate-300 mb-3">
+                    <div className="flex items-center space-x-1">
+                      <Clock className="h-3 w-3" />
+                      <span>{workout.duration}min</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Dumbbell className="h-3 w-3" />
+                      <span>{workout.exercises} exercises</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {workout.bodyFocus.map((muscle, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
+                        {muscle}
+                      </Badge>
+                    ))}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => onEditWorkout(workout)}
+                      className="flex-1"
+                    >
+                      <Edit3 className="h-3 w-3 mr-1" />
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={onSwapWorkout}
+                      className="flex-1"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Swap
+                    </Button>
                   </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {workout.bodyFocus.map((muscle, index) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      {muscle}
-                    </Badge>
-                  ))}
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => onEditWorkout(workout)}
-                    className="flex-1"
-                  >
-                    <Edit3 className="h-3 w-3 mr-1" />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={onAddAnotherSession}
-                    className="flex-1"
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Session
-                  </Button>
-                </div>
+
+                                 {/* Secondary Workouts Section */}
+                 <div className="space-y-3">
+                   <div className="flex items-center justify-between">
+                     <h4 className="font-semibold text-slate-800 dark:text-white">Additional Workouts</h4>
+                     <Button 
+                       variant="outline" 
+                       size="sm"
+                       onClick={onAddSecondaryWorkout}
+                     >
+                       <Plus className="h-3 w-3 mr-1" />
+                       Add
+                     </Button>
+                   </div>
+                   
+                   {secondaryWorkouts.length === 0 ? (
+                     <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+                       <p className="text-sm text-slate-600 dark:text-slate-300 text-center">
+                         No additional workouts scheduled
+                       </p>
+                     </div>
+                   ) : (
+                     secondaryWorkouts.map((secondaryWorkout, index) => (
+                       <div key={secondaryWorkout.id} className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+                         <div className="flex items-center justify-between mb-2">
+                           <div className="flex items-center gap-2">
+                             <h4 className="font-semibold text-slate-800 dark:text-white">{secondaryWorkout.title}</h4>
+                             <Badge variant="outline" className="text-xs">Secondary</Badge>
+                           </div>
+                           {secondaryWorkout.isCompleted && (
+                             <Badge className="bg-green-100 text-green-700">✓ Completed</Badge>
+                           )}
+                         </div>
+                         
+                         <div className="flex items-center space-x-4 text-sm text-slate-600 dark:text-slate-300 mb-3">
+                           <div className="flex items-center space-x-1">
+                             <Clock className="h-3 w-3" />
+                             <span>{secondaryWorkout.duration}min</span>
+                           </div>
+                           <div className="flex items-center space-x-1">
+                             <Dumbbell className="h-3 w-3" />
+                             <span>{secondaryWorkout.exercises} exercises</span>
+                           </div>
+                         </div>
+                         
+                         <div className="flex flex-wrap gap-1 mb-3">
+                           {secondaryWorkout.bodyFocus.map((muscle, muscleIndex) => (
+                             <Badge key={muscleIndex} variant="secondary" className="text-xs">
+                               {muscle}
+                             </Badge>
+                           ))}
+                         </div>
+                         
+                         <div className="flex gap-2">
+                           <Button 
+                             variant="outline" 
+                             size="sm"
+                             onClick={() => onEditWorkout(secondaryWorkout)}
+                             className="flex-1"
+                           >
+                             <Edit3 className="h-3 w-3 mr-1" />
+                             Edit
+                           </Button>
+                           <Button 
+                             variant="outline" 
+                             size="sm"
+                             onClick={onSwapWorkout}
+                             className="flex-1"
+                           >
+                             <RefreshCw className="h-3 w-3 mr-1" />
+                             Swap
+                           </Button>
+                         </div>
+                       </div>
+                     ))
+                   )}
+                 </div>
               </div>
             ) : (
               <div className="p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-center">
