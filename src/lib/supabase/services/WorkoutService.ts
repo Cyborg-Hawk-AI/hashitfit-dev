@@ -94,6 +94,8 @@ export class WorkoutService {
   }
 
   static async getWorkoutPlanById(planId: string): Promise<WorkoutPlan | null> {
+    console.log('🔍 WorkoutService.getWorkoutPlanById called with planId:', planId);
+    
     try {
       const { data, error } = await supabase
         .from('workout_plans')
@@ -101,10 +103,15 @@ export class WorkoutService {
         .eq('id', planId)
         .single();
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error in getWorkoutPlanById:', error);
+        throw error;
+      }
+      
+      console.log('✅ WorkoutService.getWorkoutPlanById result:', data);
       return data as WorkoutPlan;
     } catch (error) {
-      console.error('Error fetching workout plan:', error);
+      console.error('❌ Error fetching workout plan:', error);
       return null;
     }
   }
@@ -157,6 +164,8 @@ export class WorkoutService {
 
   // Workout Exercises
   static async getWorkoutExercises(planId: string): Promise<WorkoutExercise[]> {
+    console.log('🔍 WorkoutService.getWorkoutExercises called with planId:', planId);
+    
     try {
       const { data, error } = await supabase
         .from('workout_exercises')
@@ -164,10 +173,15 @@ export class WorkoutService {
         .eq('workout_plan_id', planId)
         .order('order_index', { ascending: true });
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error in getWorkoutExercises:', error);
+        throw error;
+      }
+      
+      console.log('✅ WorkoutService.getWorkoutExercises result:', data);
       return data as WorkoutExercise[];
     } catch (error) {
-      console.error('Error fetching workout exercises:', error);
+      console.error('❌ Error fetching workout exercises:', error);
       return [];
     }
   }
@@ -459,6 +473,8 @@ export class WorkoutService {
   }
 
   static async getWorkoutSchedule(userId: string, startDate: string, endDate: string): Promise<WorkoutSchedule[]> {
+    console.log('🔍 WorkoutService.getWorkoutSchedule called with:', { userId, startDate, endDate });
+    
     try {
       const { data, error } = await supabase
         .from('workout_schedule')
@@ -471,10 +487,15 @@ export class WorkoutService {
         .lte('scheduled_date', endDate)
         .order('scheduled_date', { ascending: true });
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error in getWorkoutSchedule:', error);
+        throw error;
+      }
+      
+      console.log('✅ WorkoutService.getWorkoutSchedule result:', data);
       return data as WorkoutSchedule[];
     } catch (error) {
-      console.error('Error fetching workout schedule:', error);
+      console.error('❌ Error fetching workout schedule:', error);
       return [];
     }
   }

@@ -442,24 +442,37 @@ export default function PlannerPage() {
     
     const loadDayData = async () => {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      console.log('🔄 loadDayData called for date:', dateStr);
+      console.log('👤 User ID:', userId);
       
       try {
         // Load workouts for the day
+        console.log('📅 Loading workout schedules for date:', dateStr);
         const schedules = await WorkoutService.getWorkoutSchedule(userId, dateStr, dateStr);
+        console.log('📋 Raw schedules from database:', schedules);
+        
         let primaryWorkout = null;
         let secondaryWorkouts = [];
         
         if (schedules.length > 0) {
+          console.log('🏋️ Found', schedules.length, 'scheduled workouts');
+          
           // Sort schedules by creation time to determine primary vs secondary
           const sortedSchedules = schedules.sort((a, b) => 
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
+          console.log('📊 Sorted schedules:', sortedSchedules);
           
           // First workout is primary, rest are secondary
           for (let i = 0; i < sortedSchedules.length; i++) {
             const schedule = sortedSchedules[i];
+            console.log(`🏋️ Processing schedule ${i + 1}/${sortedSchedules.length}:`, schedule);
+            
             const workoutPlan = await WorkoutService.getWorkoutPlanById(schedule.workout_plan_id);
+            console.log('📋 Workout plan for schedule:', workoutPlan);
+            
             const exercises = await WorkoutService.getWorkoutExercises(schedule.workout_plan_id);
+            console.log('💪 Exercises for workout plan:', exercises);
             
             if (workoutPlan) {
               const workoutData = {
@@ -475,17 +488,29 @@ export default function PlannerPage() {
                 ai_generated: workoutPlan.ai_generated
               };
               
+              console.log('🏋️ Processed workout data:', workoutData);
+              
               if (i === 0) {
                 primaryWorkout = workoutData;
+                console.log('🥇 Set as primary workout');
               } else {
                 secondaryWorkouts.push(workoutData);
+                console.log('🥈 Added to secondary workouts');
               }
+            } else {
+              console.log('❌ No workout plan found for schedule:', schedule);
             }
           }
+        } else {
+          console.log('📭 No scheduled workouts found for date:', dateStr);
         }
+        
+        console.log('🏋️ Final primary workout:', primaryWorkout);
+        console.log('🏋️ Final secondary workouts:', secondaryWorkouts);
         
         // Load meals for the day
         const mealLogs = await NutritionService.getMealLogsForDate(userId, dateStr);
+        console.log('🍽️ Meal logs for date:', mealLogs);
         
         // Mock habits data
         const habits = [
@@ -494,15 +519,19 @@ export default function PlannerPage() {
           { id: '3', name: 'Take Vitamins', isCompleted: true },
         ];
         
-        setSelectedDayData({
+        const finalDayData = {
           workout: primaryWorkout,
           secondaryWorkouts,
           meals: mealLogs || [],
           habits
-        });
+        };
+        
+        console.log('📊 Final day data to set:', finalDayData);
+        setSelectedDayData(finalDayData);
+        console.log('✅ selectedDayData state updated');
         
       } catch (error) {
-        console.error("Error loading day data:", error);
+        console.error("❌ Error loading day data:", error);
       }
     };
     
@@ -675,17 +704,27 @@ export default function PlannerPage() {
   };
 
   const handleWorkoutAdded = () => {
+    console.log('🔄 handleWorkoutAdded called - refreshing data...');
+    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData');
+    
     // Refresh the data after a workout is added
     queryClient.invalidateQueries(['workoutSchedules']);
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+    
+    console.log('✅ Query invalidation completed');
   };
 
   const handleWorkoutSwapped = () => {
+    console.log('🔄 handleWorkoutSwapped called - refreshing data...');
+    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData');
+    
     // Refresh the data after a workout is swapped
     queryClient.invalidateQueries(['workoutSchedules']);
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+    
+    console.log('✅ Query invalidation completed');
   };
 
   const handlePreLogMeal = (date: Date) => {
@@ -732,18 +771,34 @@ export default function PlannerPage() {
   };
   
   const handleWorkoutSelected = async (workout: any) => {
+    console.log('🔍 handleWorkoutSelected called with workout:', workout);
+    
     if (!workout) {
+      console.log('❌ No workout provided, returning early');
       return;
     }
     
     const selectedDateString = format(selectedDate, 'yyyy-MM-dd');
+    console.log('📅 Selected date string:', selectedDateString);
+    console.log('👤 User ID:', userId);
     
     try {
       let workoutPlanId = workout.id;
+      console.log('🏋️ Initial workout plan ID:', workoutPlanId);
       
       // If workout doesn't have an ID, it's a new workout that needs to be created
       if (!workout.id) {
-        console.log('Creating new workout plan...');
+        console.log('🆕 Creating new workout plan...');
+        console.log('📝 Workout data to create:', {
+          user_id: userId,
+          title: workout.title,
+          description: workout.description || '',
+          category: workout.category,
+          difficulty: workout.difficulty || 3,
+          estimated_duration: workout.estimated_duration || '00:30:00',
+          target_muscles: workout.target_muscles || ['full_body'],
+          ai_generated: false
+        });
         
         // Create the workout plan first
         const { data: newWorkoutPlan, error: createError } = await supabase
@@ -762,7 +817,7 @@ export default function PlannerPage() {
           .single();
         
         if (createError) {
-          console.error('Error creating workout plan:', createError);
+          console.error('❌ Error creating workout plan:', createError);
           toast({
             title: "Error",
             description: "Failed to create workout plan",
@@ -771,10 +826,13 @@ export default function PlannerPage() {
           return;
         }
         
+        console.log('✅ Workout plan created successfully:', newWorkoutPlan);
         workoutPlanId = newWorkoutPlan.id;
+        console.log('🆔 New workout plan ID:', workoutPlanId);
         
         // Create workout exercises if provided
         if (workout.exercises && workout.exercises.length > 0) {
+          console.log('💪 Creating workout exercises:', workout.exercises.length, 'exercises');
           const exercisesToInsert = workout.exercises.map((exercise: any, index: number) => ({
             workout_plan_id: workoutPlanId,
             name: exercise.name,
@@ -785,28 +843,40 @@ export default function PlannerPage() {
             order_index: index
           }));
           
+          console.log('📝 Exercises to insert:', exercisesToInsert);
+          
           const { error: exercisesError } = await supabase
             .from('workout_exercises')
             .insert(exercisesToInsert);
           
           if (exercisesError) {
-            console.error('Error creating workout exercises:', exercisesError);
+            console.error('❌ Error creating workout exercises:', exercisesError);
+          } else {
+            console.log('✅ Workout exercises created successfully');
           }
         }
+      } else {
+        console.log('🔄 Using existing workout plan ID:', workoutPlanId);
       }
       
-      console.log(`Scheduling workout ${workoutPlanId} for ${selectedDateString}`);
+      console.log(`📅 Scheduling workout ${workoutPlanId} for ${selectedDateString}`);
       
       // Schedule the workout
+      console.log('🚀 Calling scheduleWorkoutMutation with:', {
+        workout_plan_id: workoutPlanId,
+        scheduled_date: selectedDateString
+      });
+      
       scheduleWorkoutMutation.mutate({
         workout_plan_id: workoutPlanId,
         scheduled_date: selectedDateString
       });
       
+      console.log('✅ Workout scheduling mutation called');
       setShowAddWorkout(false);
       
     } catch (error) {
-      console.error('Error in handleWorkoutSelected:', error);
+      console.error('❌ Error in handleWorkoutSelected:', error);
       toast({
         title: "Error",
         description: "Failed to create and schedule workout",

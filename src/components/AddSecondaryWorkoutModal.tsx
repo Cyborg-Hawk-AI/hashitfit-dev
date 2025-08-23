@@ -146,14 +146,32 @@ export function AddSecondaryWorkoutModal({
   };
 
   const handleAddWorkout = async (workout: WorkoutPlan | PublicWorkout) => {
-    if (!userId) return;
+    console.log('🔍 AddSecondaryWorkoutModal: handleAddWorkout called with workout:', workout);
+    console.log('👤 User ID:', userId);
+    console.log('📅 Selected date:', format(selectedDate, 'yyyy-MM-dd'));
+    
+    if (!userId) {
+      console.log('❌ No userId, returning early');
+      return;
+    }
 
     try {
       let workoutPlanId = workout.id;
+      console.log('🏋️ Initial workout plan ID:', workoutPlanId);
       
       // If it's a public template (starts with 'public-'), create a new workout plan
       if (workout.id.startsWith('public-')) {
-        console.log('Creating workout plan from public template...');
+        console.log('🆕 Creating workout plan from public template...');
+        console.log('📝 Template data:', {
+          user_id: userId,
+          title: workout.title,
+          description: workout.description,
+          category: workout.category,
+          difficulty: workout.difficulty,
+          estimated_duration: workout.estimated_duration,
+          target_muscles: workout.target_muscles,
+          ai_generated: false
+        });
         
         // Create the workout plan from template
         const { data: newWorkoutPlan, error: createError } = await supabase
@@ -172,7 +190,7 @@ export function AddSecondaryWorkoutModal({
           .single();
         
         if (createError) {
-          console.error('Error creating workout plan from template:', createError);
+          console.error('❌ Error creating workout plan from template:', createError);
           toast({
             title: "Error",
             description: "Failed to create workout plan from template",
@@ -181,8 +199,20 @@ export function AddSecondaryWorkoutModal({
           return;
         }
         
+        console.log('✅ Workout plan created from template:', newWorkoutPlan);
         workoutPlanId = newWorkoutPlan.id;
+        console.log('🆔 New workout plan ID:', workoutPlanId);
+      } else {
+        console.log('🔄 Using existing workout plan ID:', workoutPlanId);
       }
+
+      console.log('📅 Scheduling workout for date:', format(selectedDate, 'yyyy-MM-dd'));
+      console.log('📝 Schedule data to insert:', {
+        user_id: userId,
+        workout_plan_id: workoutPlanId,
+        scheduled_date: format(selectedDate, 'yyyy-MM-dd'),
+        is_completed: false
+      });
 
       // Schedule the workout for the selected date
       const { error } = await supabase
@@ -194,7 +224,12 @@ export function AddSecondaryWorkoutModal({
           is_completed: false
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error scheduling workout:', error);
+        throw error;
+      }
+
+      console.log('✅ Workout scheduled successfully');
 
       toast({
         title: "Success!",
@@ -202,10 +237,12 @@ export function AddSecondaryWorkoutModal({
         variant: "default"
       });
 
+      console.log('🔄 Calling onWorkoutAdded callback');
       onWorkoutAdded();
+      console.log('✅ Closing modal');
       onClose();
     } catch (error) {
-      console.error('Error adding workout:', error);
+      console.error('❌ Error adding workout:', error);
       toast({
         title: "Error",
         description: "Failed to add workout to schedule",

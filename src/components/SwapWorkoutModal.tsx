@@ -167,14 +167,33 @@ export function SwapWorkoutModal({
   };
 
   const handleSwapWorkout = async (newWorkout: WorkoutPlan | PublicWorkout) => {
-    if (!userId) return;
+    console.log('🔍 SwapWorkoutModal: handleSwapWorkout called with newWorkout:', newWorkout);
+    console.log('👤 User ID:', userId);
+    console.log('📅 Selected date:', format(selectedDate, 'yyyy-MM-dd'));
+    console.log('🏋️ Current workout to replace:', currentWorkout);
+    
+    if (!userId) {
+      console.log('❌ No userId, returning early');
+      return;
+    }
 
     try {
       let workoutPlanId = newWorkout.id;
+      console.log('🏋️ Initial new workout plan ID:', workoutPlanId);
       
       // If it's a public template (starts with 'public-'), create a new workout plan
       if (newWorkout.id.startsWith('public-')) {
-        console.log('Creating workout plan from public template for swap...');
+        console.log('🆕 Creating workout plan from public template for swap...');
+        console.log('📝 Template data:', {
+          user_id: userId,
+          title: newWorkout.title,
+          description: newWorkout.description,
+          category: newWorkout.category,
+          difficulty: newWorkout.difficulty,
+          estimated_duration: newWorkout.estimated_duration,
+          target_muscles: newWorkout.target_muscles,
+          ai_generated: false
+        });
         
         // Create the workout plan from template
         const { data: newWorkoutPlan, error: createError } = await supabase
@@ -193,7 +212,7 @@ export function SwapWorkoutModal({
           .single();
         
         if (createError) {
-          console.error('Error creating workout plan from template:', createError);
+          console.error('❌ Error creating workout plan from template:', createError);
           toast({
             title: "Error",
             description: "Failed to create workout plan from template",
@@ -202,11 +221,22 @@ export function SwapWorkoutModal({
           return;
         }
         
+        console.log('✅ Workout plan created from template:', newWorkoutPlan);
         workoutPlanId = newWorkoutPlan.id;
+        console.log('🆔 New workout plan ID:', workoutPlanId);
+      } else {
+        console.log('🔄 Using existing workout plan ID:', workoutPlanId);
       }
 
       // First, remove the current workout from the schedule
       if (currentWorkout) {
+        console.log('🗑️ Removing current workout from schedule:', currentWorkout.id);
+        console.log('📝 Delete query params:', {
+          user_id: userId,
+          scheduled_date: format(selectedDate, 'yyyy-MM-dd'),
+          workout_plan_id: currentWorkout.id
+        });
+        
         const { error: deleteError } = await supabase
           .from('workout_schedule')
           .delete()
@@ -214,10 +244,25 @@ export function SwapWorkoutModal({
           .eq('scheduled_date', format(selectedDate, 'yyyy-MM-dd'))
           .eq('workout_plan_id', currentWorkout.id);
 
-        if (deleteError) throw deleteError;
+        if (deleteError) {
+          console.error('❌ Error deleting current workout:', deleteError);
+          throw deleteError;
+        }
+        
+        console.log('✅ Current workout removed from schedule');
+      } else {
+        console.log('📭 No current workout to remove');
       }
 
       // Then, add the new workout to the schedule
+      console.log('📅 Adding new workout to schedule');
+      console.log('📝 Insert data:', {
+        user_id: userId,
+        workout_plan_id: workoutPlanId,
+        scheduled_date: format(selectedDate, 'yyyy-MM-dd'),
+        is_completed: false
+      });
+      
       const { error: insertError } = await supabase
         .from('workout_schedule')
         .insert({
@@ -227,7 +272,12 @@ export function SwapWorkoutModal({
           is_completed: false
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('❌ Error inserting new workout:', insertError);
+        throw insertError;
+      }
+
+      console.log('✅ New workout added to schedule successfully');
 
       toast({
         title: "Workout Swapped!",
@@ -235,10 +285,12 @@ export function SwapWorkoutModal({
         variant: "default"
       });
 
+      console.log('🔄 Calling onWorkoutSwapped callback');
       onWorkoutSwapped();
+      console.log('✅ Closing modal');
       onClose();
     } catch (error) {
-      console.error('Error swapping workout:', error);
+      console.error('❌ Error swapping workout:', error);
       toast({
         title: "Error",
         description: "Failed to swap workout",
