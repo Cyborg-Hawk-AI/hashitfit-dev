@@ -354,16 +354,25 @@ export class WorkoutService {
 
   // Workout Schedule
   static async scheduleWorkout(schedule: WorkoutSchedule): Promise<string | null> {
+    console.log('🔍 WorkoutService.scheduleWorkout called with:', schedule);
+    
     try {
       // Create recurring schedules for 6 months
       const scheduledDate = new Date(schedule.scheduled_date);
       const endDate = addMonths(scheduledDate, 6);
+      
+      console.log('📅 Scheduled date:', scheduledDate);
+      console.log('📅 End date:', endDate);
+      console.log('📅 Day of week for scheduled date:', scheduledDate.getDay());
       
       // Get the first day of the current week (Sunday)
       const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 }); // 0 = Sunday
       
       // Start date should be the earlier of scheduledDate or currentWeekStart
       const startDate = scheduledDate < currentWeekStart ? scheduledDate : currentWeekStart;
+      
+      console.log('📅 Current week start:', currentWeekStart);
+      console.log('📅 Start date for scheduling:', startDate);
       
       // Create an array to store all schedule entries
       const scheduleEntries: WorkoutSchedule[] = [];
@@ -373,21 +382,27 @@ export class WorkoutService {
       while (currentDate <= endDate) {
         // For each date, if it's the same day of week as the scheduled day
         if (currentDate.getDay() === scheduledDate.getDay()) {
-          scheduleEntries.push({
+          const entry = {
             ...schedule,
             scheduled_date: format(currentDate, 'yyyy-MM-dd'),
-          });
+          };
+          scheduleEntries.push(entry);
+          console.log('📅 Adding schedule entry for:', entry.scheduled_date);
         }
         
         // Move to next day
         currentDate = addDays(currentDate, 1);
       }
       
+      console.log('📅 Total schedule entries to create:', scheduleEntries.length);
+      console.log('📅 Schedule entries:', scheduleEntries.map(e => e.scheduled_date));
+      
       // If we have schedules to insert
       if (scheduleEntries.length > 0) {
         console.log(`Inserting ${scheduleEntries.length} schedule entries`);
         
         // Check for existing schedules first on the original date
+        console.log('🔍 Checking for existing schedules on date:', schedule.scheduled_date);
         const { data: existingSchedules, error: checkError } = await supabase
           .from('workout_schedule')
           .select('id')
@@ -395,6 +410,8 @@ export class WorkoutService {
           .eq('scheduled_date', schedule.scheduled_date);
           
         if (checkError) throw checkError;
+        
+        console.log('🔍 Existing schedules found:', existingSchedules);
         
         // If there's an existing schedule for the exact original date
         if (existingSchedules && existingSchedules.length > 0) {
@@ -446,15 +463,18 @@ export class WorkoutService {
           let firstInsertedId = null;
           
           for (const entry of scheduleEntries) {
+            console.log('📝 Inserting schedule entry:', entry);
             const { data, error } = await supabase
               .from('workout_schedule')
               .insert(entry)
               .select();
               
             if (error) {
-              console.error(`Error inserting schedule for ${entry.scheduled_date}:`, error);
+              console.error(`❌ Error inserting schedule for ${entry.scheduled_date}:`, error);
               continue; // Skip this one but continue with others
             }
+            
+            console.log('✅ Successfully inserted schedule for:', entry.scheduled_date, 'with ID:', data?.[0]?.id);
             
             if (!firstInsertedId && data && data.length > 0) {
               firstInsertedId = data[0].id;
