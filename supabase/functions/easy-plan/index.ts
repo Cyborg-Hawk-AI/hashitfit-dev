@@ -133,7 +133,7 @@ async function callEasyPlanAssistant(optimizationData: any): Promise<any> {
               },
               optimized_plan: {
                 monday: {
-                  focus: "light_strength",
+                  focus: "strength",
                   intensity: "low",
                   exercises: [
                     {
@@ -152,7 +152,7 @@ async function callEasyPlanAssistant(optimizationData: any): Promise<any> {
                   rationale: "Easy introduction to strength training"
                 },
                 wednesday: {
-                  focus: "light_cardio",
+                  focus: "cardio",
                   intensity: "low",
                   exercises: [
                     {
@@ -171,7 +171,7 @@ async function callEasyPlanAssistant(optimizationData: any): Promise<any> {
                   rationale: "Low-impact cardio and recovery"
                 },
                 friday: {
-                  focus: "core_and_balance",
+                  focus: "strength",
                   intensity: "low",
                   exercises: [
                     {

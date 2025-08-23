@@ -138,12 +138,32 @@ export function EasyPlanModal({ isOpen, onClose, optimizationData }: EasyPlanMod
           continue;
         }
 
+        // Map AI focus to allowed database categories
+        const categoryMapping: Record<string, string> = {
+          'strength': 'strength',
+          'strength_training': 'strength',
+          'light_strength': 'strength',
+          'cardio': 'cardio',
+          'light_cardio': 'cardio',
+          'hiit': 'hiit',
+          'recovery': 'recovery',
+          'flexibility': 'recovery',
+          'core': 'strength',
+          'core_and_balance': 'strength',
+          'total_body': 'strength',
+          'balance': 'recovery',
+          'sport_specific': 'sport_specific',
+          'custom': 'custom'
+        };
+
+        const mappedCategory = categoryMapping[dayPlan.focus] || 'custom';
+
         // Create workout plan
         const workoutPlan = {
           user_id: userId,
           title: `${dayPlan.focus.charAt(0).toUpperCase() + dayPlan.focus.slice(1)} - Easy`,
           description: dayPlan.rationale,
-          category: dayPlan.focus,
+          category: mappedCategory,
           difficulty: 1, // Easy difficulty
           estimated_duration: '00:30:00', // INTERVAL format: HH:MM:SS
           target_muscles: [dayPlan.focus],
