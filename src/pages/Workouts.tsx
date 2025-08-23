@@ -7,6 +7,7 @@ import { WorkoutFilters } from "@/components/WorkoutFilters";
 import { WorkoutCompletionSummary } from "@/components/WorkoutCompletionSummary";
 import { RestTimerOverlay } from "@/components/RestTimerOverlay";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { AddWorkoutModal } from "@/components/AddWorkoutModal";
 import { ChatFAB } from "@/components/ChatFAB";
 import { PostWorkoutFeedbackModal } from "@/components/PostWorkoutFeedbackModal";
@@ -597,7 +598,7 @@ export default function WorkoutsPage() {
       
       <main className="relative pt-6 px-4 animate-fade-in pb-32">
         <div className="max-w-lg mx-auto space-y-6">
-          {/* Hero Section - Today's Workout */}
+          {/* Hero Section - Today's Workouts */}
           {filteredWorkouts.length > 0 && (
             <div className="space-y-4">
               {/* Page Title */}
@@ -606,48 +607,81 @@ export default function WorkoutsPage() {
                   {format(selectedDate, "EEEE, MMM d")}
                 </h1>
                 <p className="text-slate-600 dark:text-slate-300 text-sm">
-                  Your training session awaits
+                  {filteredWorkouts.length === 1 ? 'Your training session awaits' : `${filteredWorkouts.length} training sessions scheduled`}
                 </p>
               </div>
 
-              {/* New Workout Summary Card */}
-              <WorkoutSummaryCard
-                workout={filteredWorkouts[0]}
-                onStartWorkout={() => startWorkoutSession(filteredWorkouts[0])}
-              />
+              {/* Multiple Workout Cards */}
+              <div className="space-y-6">
+                {filteredWorkouts.map((workout: any, workoutIndex: number) => (
+                  <div key={workout.id} className="space-y-4">
+                    {/* Workout Header */}
+                    {filteredWorkouts.length > 1 && (
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center">
+                          <span className="bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 px-2 py-1 rounded-full text-xs font-medium mr-2">
+                            Session {workoutIndex + 1}
+                          </span>
+                          {workout.title}
+                        </h2>
+                        <Badge variant={workout.isCompleted ? "default" : "secondary"}>
+                          {workout.isCompleted ? "Completed" : "Pending"}
+                        </Badge>
+                      </div>
+                    )}
 
-              {/* Collapsible Coach Insight */}
-              <CollapsibleCoachInsight workout={filteredWorkouts[0]} />
+                    {/* Workout Summary Card */}
+                    <WorkoutSummaryCard
+                      workout={workout}
+                      onStartWorkout={() => startWorkoutSession(workout)}
+                    />
 
-              {/* Exercise List with Compact Cards */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center">
-                  🗂️ Exercise List
-                </h3>
-                <div className="space-y-3">
-                  {filteredWorkouts[0].exercises.map((exercise: any, index: number) => {
-                    const isNext = !exercise.completed && index === filteredWorkouts[0].exercises.findIndex((ex: any) => !ex.completed);
-                    return (
-                      <CompactExerciseCard
-                        key={exercise.id}
-                        exercise={exercise}
-                        exerciseNumber={index + 1}
-                        isNext={isNext}
-                        onToggleComplete={handleExerciseToggle}
-                        onSwap={handleSwapExercise}
-                        onFormTips={handleFormGuide}
-                      />
-                    );
-                  })}
-                </div>
+                    {/* Collapsible Coach Insight */}
+                    <CollapsibleCoachInsight workout={workout} />
+
+                    {/* Exercise List with Compact Cards */}
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center">
+                        🗂️ Exercise List
+                      </h3>
+                      <div className="space-y-3">
+                        {workout.exercises.map((exercise: any, index: number) => {
+                          const isNext = !exercise.completed && index === workout.exercises.findIndex((ex: any) => !ex.completed);
+                          return (
+                            <CompactExerciseCard
+                              key={`${workout.id}-${exercise.id}`}
+                              exercise={exercise}
+                              exerciseNumber={index + 1}
+                              isNext={isNext}
+                              onToggleComplete={handleExerciseToggle}
+                              onSwap={handleSwapExercise}
+                              onFormTips={handleFormGuide}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Progress Indicator */}
+                    <ProgressIndicator
+                      totalExercises={workout.exercises.length}
+                      completedExercises={workout.exercises.filter((ex: any) => ex.completed).length}
+                      estimatedTimeLeft={workout.estimatedDuration - Math.floor(workout.exercises.filter((ex: any) => ex.completed).length * 3)}
+                    />
+
+                    {/* Separator between multiple workouts */}
+                    {workoutIndex < filteredWorkouts.length - 1 && (
+                      <div className="border-t border-violet-200 dark:border-violet-700/30 pt-6">
+                        <div className="text-center">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-violet-200 dark:border-violet-700/30">
+                            Next Session
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-
-              {/* Progress Indicator */}
-              <ProgressIndicator
-                totalExercises={filteredWorkouts[0].exercises.length}
-                completedExercises={filteredWorkouts[0].exercises.filter((ex: any) => ex.completed).length}
-                estimatedTimeLeft={filteredWorkouts[0].estimatedDuration - Math.floor(filteredWorkouts[0].exercises.filter((ex: any) => ex.completed).length * 3)}
-              />
             </div>
           )}
 
@@ -701,13 +735,16 @@ export default function WorkoutsPage() {
         </div>
       </main>
 
-      {/* Sticky Footer Bar */}
-      {filteredWorkouts.length > 0 && !filteredWorkouts[0]?.isCompleted && (
-        <StickyFooterBar
-          onStartWorkout={() => startWorkoutSession(filteredWorkouts[0])}
-          onVoiceLog={() => console.log('Voice log')}
-        />
-      )}
+      {/* Sticky Footer Bar - Show for first incomplete workout */}
+      {filteredWorkouts.length > 0 && (() => {
+        const firstIncompleteWorkout = filteredWorkouts.find(workout => !workout.isCompleted);
+        return firstIncompleteWorkout ? (
+          <StickyFooterBar
+            onStartWorkout={() => startWorkoutSession(firstIncompleteWorkout)}
+            onVoiceLog={() => console.log('Voice log')}
+          />
+        ) : null;
+      })()}
       
       <AddWorkoutModal 
         isOpen={showAddWorkout} 
