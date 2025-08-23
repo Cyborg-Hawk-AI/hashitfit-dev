@@ -378,16 +378,25 @@ export class WorkoutService {
       const scheduleEntries: WorkoutSchedule[] = [];
       let currentDate = new Date(startDate);
       
-      // Loop through dates to create weekly recurring schedules for 6 months
+      // First, ensure we have a schedule for the exact requested date
+      const exactDateEntry = {
+        ...schedule,
+        scheduled_date: schedule.scheduled_date,
+      };
+      scheduleEntries.push(exactDateEntry);
+      console.log('📅 Adding exact date schedule entry for:', exactDateEntry.scheduled_date);
+      
+      // Then create recurring schedules for 6 months (same day of week)
       while (currentDate <= endDate) {
-        // For each date, if it's the same day of week as the scheduled day
-        if (currentDate.getDay() === scheduledDate.getDay()) {
+        // For each date, if it's the same day of week as the scheduled day AND it's not the exact date we already added
+        if (currentDate.getDay() === scheduledDate.getDay() && 
+            format(currentDate, 'yyyy-MM-dd') !== schedule.scheduled_date) {
           const entry = {
             ...schedule,
             scheduled_date: format(currentDate, 'yyyy-MM-dd'),
           };
           scheduleEntries.push(entry);
-          console.log('📅 Adding schedule entry for:', entry.scheduled_date);
+          console.log('📅 Adding recurring schedule entry for:', entry.scheduled_date);
         }
         
         // Move to next day
@@ -413,7 +422,7 @@ export class WorkoutService {
         
         console.log('🔍 Existing schedules found:', existingSchedules);
         
-        // If there's an existing schedule for the exact original date
+        // If there's an existing schedule for the exact original date, update it
         if (existingSchedules && existingSchedules.length > 0) {
           // Update the existing schedule
           const { data, error } = await supabase
