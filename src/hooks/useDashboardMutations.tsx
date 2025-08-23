@@ -29,8 +29,9 @@ export function useDashboardMutations() {
       console.log("Successfully scheduled workout");
       queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
       queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
-      // Invalidate all selectedWorkout queries to ensure today's workout is updated
       queryClient.invalidateQueries({ queryKey: ['selectedWorkout'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduledWorkouts'] });
+      queryClient.invalidateQueries({ queryKey: ['todayScheduledWorkouts'] });
       
       toast({
         title: "Workout Scheduled",

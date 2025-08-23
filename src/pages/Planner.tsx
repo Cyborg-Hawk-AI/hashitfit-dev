@@ -27,7 +27,7 @@ import { AddSecondaryWorkoutModal } from "@/components/AddSecondaryWorkoutModal"
 import { SwapWorkoutModal } from "@/components/SwapWorkoutModal";
 import { Plus, Loader2, Zap } from "lucide-react";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import supabase, { supabaseUrl } from "@/lib/supabase";
 
 export default function PlannerPage() {
@@ -374,68 +374,78 @@ export default function PlannerPage() {
     return targetDate;
   };
 
+  // Use React Query for weekly data to ensure consistency with other components
+  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 0 });
+  const startStr = format(weekStart, 'yyyy-MM-dd');
+  const endStr = format(weekEnd, 'yyyy-MM-dd');
+
+  const { data: weeklySchedules = [] } = useQuery({
+    queryKey: ['workoutSchedules', userId, startStr, endStr],
+    queryFn: async () => {
+      if (!userId) return [];
+      console.log('📅 Loading weekly workout schedules for Planner:', startStr, 'to', endStr);
+      return await WorkoutService.getWorkoutSchedule(userId, startStr, endStr);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: weeklyNutritionSummary = [] } = useQuery({
+    queryKey: ['weeklyNutritionSummary', userId, startStr, endStr],
+    queryFn: async () => {
+      if (!userId) return [];
+      console.log('🍽️ Loading weekly nutrition summary for Planner:', startStr, 'to', endStr);
+      return await NutritionService.getNutritionalSummary(userId, startStr, endStr);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Process weekly data when schedules or nutrition data changes
   useEffect(() => {
     if (!userId) return;
     
-    const loadWeeklyData = async () => {
-      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
-      const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 0 });
-      const startStr = format(weekStart, 'yyyy-MM-dd');
-      const endStr = format(weekEnd, 'yyyy-MM-dd');
+    // Process week data
+    const processedWeekData = [];
+    for (let i = 0; i < 7; i++) {
+      const currentDate = addDays(weekStart, i);
+      const dateStr = format(currentDate, 'yyyy-MM-dd');
       
-      try {
-        // Load workout schedules
-        const schedules = await WorkoutService.getWorkoutSchedule(userId, startStr, endStr);
-        
-        // Load nutrition logs for the week
-        const nutritionSummary = await NutritionService.getNutritionalSummary(userId, startStr, endStr);
-        
-        // Process week data
-        const processedWeekData = [];
-        for (let i = 0; i < 7; i++) {
-          const currentDate = addDays(weekStart, i);
-          const dateStr = format(currentDate, 'yyyy-MM-dd');
-          
-          const daySchedules = schedules.filter(s => s.scheduled_date === dateStr);
-          const dayNutrition = nutritionSummary.find(n => n.log_date === dateStr);
-          
-          processedWeekData.push({
-            date: currentDate,
-            hasWorkout: daySchedules.length > 0,
-            hasMeals: !!dayNutrition,
-            calorieStatus: dayNutrition 
-              ? (dayNutrition.total_calories > 2000 ? 'good' : dayNutrition.total_calories > 1500 ? 'warning' : 'poor')
-              : 'none'
-          });
-        }
-        
-        setWeekData(processedWeekData);
-        
-        // Calculate weekly stats
-        const completedWorkouts = schedules.filter(s => s.is_completed).length;
-        const totalScheduled = schedules.length;
-        const nutritionDays = nutritionSummary.length;
-        
-        setWeeklyStats({
-          workoutCompletion: totalScheduled > 0 ? Math.round((completedWorkouts / totalScheduled) * 100) : 0,
-          nutritionCompliance: Math.round((nutritionDays / 7) * 100),
-          habitsCompleted: 12, // Mock data
-          totalHabits: 21, // Mock data
-          progressTrend: 'up',
-          weeklyGoals: {
-            workouts: { completed: completedWorkouts, target: 4 },
-            calories: { avg: 1800, target: 2000 },
-            protein: { avg: 120, target: 150 }
-          }
-        });
-        
-      } catch (error) {
-        console.error("Error loading weekly data:", error);
-      }
-    };
+      const daySchedules = weeklySchedules.filter(s => s.scheduled_date === dateStr);
+      const dayNutrition = weeklyNutritionSummary.find(n => n.log_date === dateStr);
+      
+      processedWeekData.push({
+        date: currentDate,
+        hasWorkout: daySchedules.length > 0,
+        hasMeals: !!dayNutrition,
+        calorieStatus: dayNutrition 
+          ? (dayNutrition.total_calories > 2000 ? 'good' : dayNutrition.total_calories > 1500 ? 'warning' : 'poor')
+          : 'none'
+      });
+    }
     
-    loadWeeklyData();
-  }, [userId, selectedDate]);
+    setWeekData(processedWeekData);
+    
+    // Calculate weekly stats
+    const completedWorkouts = weeklySchedules.filter(s => s.is_completed).length;
+    const totalScheduled = weeklySchedules.length;
+    const nutritionDays = weeklyNutritionSummary.length;
+    
+    setWeeklyStats({
+      workoutCompletion: totalScheduled > 0 ? Math.round((completedWorkouts / totalScheduled) * 100) : 0,
+      nutritionCompliance: Math.round((nutritionDays / 7) * 100),
+      habitsCompleted: 12, // Mock data
+      totalHabits: 21, // Mock data
+      progressTrend: 'up',
+      weeklyGoals: {
+        workouts: { completed: completedWorkouts, target: 4 },
+        calories: { avg: 1800, target: 2000 },
+        protein: { avg: 120, target: 150 }
+      }
+    });
+    
+  }, [userId, weeklySchedules, weeklyNutritionSummary, weekStart]);
   
   // Load selected day data
   useEffect(() => {
@@ -732,12 +742,14 @@ export default function PlannerPage() {
 
   const handleWorkoutAdded = () => {
     console.log('🔄 handleWorkoutAdded called - refreshing data...');
-    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData');
+    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData, scheduledWorkouts, todayScheduledWorkouts');
     
     // Refresh the data after a workout is added
     queryClient.invalidateQueries(['workoutSchedules']);
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+    queryClient.invalidateQueries(['scheduledWorkouts']);
+    queryClient.invalidateQueries(['todayScheduledWorkouts']);
     
     // Force a re-render by updating the selectedDate state
     console.log('🔄 Force refreshing day data by updating selectedDate');
@@ -755,12 +767,14 @@ export default function PlannerPage() {
       setLastSwappedWorkoutId(newWorkoutId);
     }
     
-    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData');
+    console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData, scheduledWorkouts, todayScheduledWorkouts');
     
     // Refresh the data after a workout is swapped
     queryClient.invalidateQueries(['workoutSchedules']);
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+    queryClient.invalidateQueries(['scheduledWorkouts']);
+    queryClient.invalidateQueries(['todayScheduledWorkouts']);
     
     // Force a re-render by updating the selectedDate state
     console.log('🔄 Force refreshing day data by updating selectedDate');
