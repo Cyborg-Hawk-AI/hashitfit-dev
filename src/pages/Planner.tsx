@@ -731,20 +731,88 @@ export default function PlannerPage() {
     });
   };
   
-  const handleWorkoutSelected = (workout: any) => {
-    if (!workout || !workout.id) {
+  const handleWorkoutSelected = async (workout: any) => {
+    if (!workout) {
       return;
     }
     
     const selectedDateString = format(selectedDate, 'yyyy-MM-dd');
-    console.log(`Scheduling workout ${workout.id} for ${selectedDateString}`);
     
-    scheduleWorkoutMutation.mutate({
-      workout_plan_id: workout.id,
-      scheduled_date: selectedDateString
-    });
-    
-    setShowAddWorkout(false);
+    try {
+      let workoutPlanId = workout.id;
+      
+      // If workout doesn't have an ID, it's a new workout that needs to be created
+      if (!workout.id) {
+        console.log('Creating new workout plan...');
+        
+        // Create the workout plan first
+        const { data: newWorkoutPlan, error: createError } = await supabase
+          .from('workout_plans')
+          .insert({
+            user_id: userId,
+            title: workout.title,
+            description: workout.description || '',
+            category: workout.category,
+            difficulty: workout.difficulty || 3,
+            estimated_duration: workout.estimated_duration || '00:30:00',
+            target_muscles: workout.target_muscles || ['full_body'],
+            ai_generated: false
+          })
+          .select()
+          .single();
+        
+        if (createError) {
+          console.error('Error creating workout plan:', createError);
+          toast({
+            title: "Error",
+            description: "Failed to create workout plan",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        workoutPlanId = newWorkoutPlan.id;
+        
+        // Create workout exercises if provided
+        if (workout.exercises && workout.exercises.length > 0) {
+          const exercisesToInsert = workout.exercises.map((exercise: any, index: number) => ({
+            workout_plan_id: workoutPlanId,
+            name: exercise.name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            weight: exercise.weight || 'bodyweight',
+            rest_time: exercise.rest_time || '00:01:00',
+            order_index: index
+          }));
+          
+          const { error: exercisesError } = await supabase
+            .from('workout_exercises')
+            .insert(exercisesToInsert);
+          
+          if (exercisesError) {
+            console.error('Error creating workout exercises:', exercisesError);
+          }
+        }
+      }
+      
+      console.log(`Scheduling workout ${workoutPlanId} for ${selectedDateString}`);
+      
+      // Schedule the workout
+      scheduleWorkoutMutation.mutate({
+        workout_plan_id: workoutPlanId,
+        scheduled_date: selectedDateString
+      });
+      
+      setShowAddWorkout(false);
+      
+    } catch (error) {
+      console.error('Error in handleWorkoutSelected:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create and schedule workout",
+        variant: "destructive"
+      });
+    }
   };
   
   return (

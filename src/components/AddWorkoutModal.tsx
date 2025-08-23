@@ -58,7 +58,7 @@ export function AddWorkoutModal({
     setExercises(updatedExercises);
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Basic validation
@@ -69,8 +69,8 @@ export function AddWorkoutModal({
       return; // Don't submit if title or any exercise name is empty
     }
     
-    const workout = {
-      id: `temp-${Date.now()}`, // Add a temporary ID to prevent the "valid workout" error
+    // Create workout plan data
+    const workoutData = {
       title,
       category,
       exercises: exercises.map(ex => ({
@@ -79,7 +79,7 @@ export function AddWorkoutModal({
       }))
     };
     
-    onAddWorkout(workout);
+    onAddWorkout(workoutData);
     
     // Reset form
     setExercises([{ name: "", sets: 3, reps: "10", weight: "bodyweight" }]);

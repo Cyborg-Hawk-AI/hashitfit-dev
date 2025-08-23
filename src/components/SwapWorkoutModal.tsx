@@ -170,6 +170,41 @@ export function SwapWorkoutModal({
     if (!userId) return;
 
     try {
+      let workoutPlanId = newWorkout.id;
+      
+      // If it's a public template (starts with 'public-'), create a new workout plan
+      if (newWorkout.id.startsWith('public-')) {
+        console.log('Creating workout plan from public template for swap...');
+        
+        // Create the workout plan from template
+        const { data: newWorkoutPlan, error: createError } = await supabase
+          .from('workout_plans')
+          .insert({
+            user_id: userId,
+            title: newWorkout.title,
+            description: newWorkout.description,
+            category: newWorkout.category,
+            difficulty: newWorkout.difficulty,
+            estimated_duration: newWorkout.estimated_duration,
+            target_muscles: newWorkout.target_muscles,
+            ai_generated: false
+          })
+          .select()
+          .single();
+        
+        if (createError) {
+          console.error('Error creating workout plan from template:', createError);
+          toast({
+            title: "Error",
+            description: "Failed to create workout plan from template",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        workoutPlanId = newWorkoutPlan.id;
+      }
+
       // First, remove the current workout from the schedule
       if (currentWorkout) {
         const { error: deleteError } = await supabase
@@ -187,7 +222,7 @@ export function SwapWorkoutModal({
         .from('workout_schedule')
         .insert({
           user_id: userId,
-          workout_plan_id: newWorkout.id,
+          workout_plan_id: workoutPlanId,
           scheduled_date: format(selectedDate, 'yyyy-MM-dd'),
           is_completed: false
         });

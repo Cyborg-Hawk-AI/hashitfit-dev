@@ -149,12 +149,47 @@ export function AddSecondaryWorkoutModal({
     if (!userId) return;
 
     try {
+      let workoutPlanId = workout.id;
+      
+      // If it's a public template (starts with 'public-'), create a new workout plan
+      if (workout.id.startsWith('public-')) {
+        console.log('Creating workout plan from public template...');
+        
+        // Create the workout plan from template
+        const { data: newWorkoutPlan, error: createError } = await supabase
+          .from('workout_plans')
+          .insert({
+            user_id: userId,
+            title: workout.title,
+            description: workout.description,
+            category: workout.category,
+            difficulty: workout.difficulty,
+            estimated_duration: workout.estimated_duration,
+            target_muscles: workout.target_muscles,
+            ai_generated: false
+          })
+          .select()
+          .single();
+        
+        if (createError) {
+          console.error('Error creating workout plan from template:', createError);
+          toast({
+            title: "Error",
+            description: "Failed to create workout plan from template",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        workoutPlanId = newWorkoutPlan.id;
+      }
+
       // Schedule the workout for the selected date
       const { error } = await supabase
         .from('workout_schedule')
         .insert({
           user_id: userId,
-          workout_plan_id: workout.id,
+          workout_plan_id: workoutPlanId,
           scheduled_date: format(selectedDate, 'yyyy-MM-dd'),
           is_completed: false
         });
