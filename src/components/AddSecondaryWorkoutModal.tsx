@@ -73,6 +73,8 @@ export function AddSecondaryWorkoutModal({
   const loadWorkouts = async () => {
     setIsLoading(true);
     try {
+      console.log('🔍 Loading workouts for user (AddSecondary):', userId);
+      
       // Load user's workout plans
       const { data: userWorkoutData, error: userError } = await supabase
         .from('workout_plans')
@@ -80,7 +82,12 @@ export function AddSecondaryWorkoutModal({
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (userError) throw userError;
+      if (userError) {
+        console.error('❌ Error loading user workouts (AddSecondary):', userError);
+        throw userError;
+      }
+      
+      console.log('✅ User workouts loaded (AddSecondary):', userWorkoutData);
       setUserWorkouts(userWorkoutData || []);
 
       // Load public workout templates (you can create these or use a predefined list)
@@ -282,6 +289,16 @@ export function AddSecondaryWorkoutModal({
     workout.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     workout.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Debug logging
+  console.log('🔍 AddSecondaryWorkoutModal Debug:', {
+    userWorkoutsCount: userWorkouts.length,
+    filteredUserWorkoutsCount: filteredUserWorkouts.length,
+    publicWorkoutsCount: publicWorkouts.length,
+    filteredPublicWorkoutsCount: filteredPublicWorkouts.length,
+    searchTerm,
+    isLoading
+  });
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
