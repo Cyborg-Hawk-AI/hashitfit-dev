@@ -286,7 +286,7 @@ export function SwapWorkoutModal({
       });
 
       console.log('🔄 Calling onWorkoutSwapped callback');
-      onWorkoutSwapped(newWorkoutPlanId);
+      onWorkoutSwapped(workoutPlanId);
       console.log('✅ Closing modal');
       onClose();
     } catch (error) {
