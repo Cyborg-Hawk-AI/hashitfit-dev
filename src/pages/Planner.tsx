@@ -712,6 +712,10 @@ export default function PlannerPage() {
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
     
+    // Force a re-render by updating the selectedDate state
+    console.log('🔄 Force refreshing day data by updating selectedDate');
+    setSelectedDate(new Date(selectedDate));
+    
     console.log('✅ Query invalidation completed');
   };
 
@@ -723,6 +727,10 @@ export default function PlannerPage() {
     queryClient.invalidateQueries(['workoutSchedules']);
     queryClient.invalidateQueries(['weeklyWorkouts']);
     queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
+    
+    // Force a re-render by updating the selectedDate state
+    console.log('🔄 Force refreshing day data by updating selectedDate');
+    setSelectedDate(new Date(selectedDate));
     
     console.log('✅ Query invalidation completed');
   };
@@ -874,6 +882,12 @@ export default function PlannerPage() {
       
       console.log('✅ Workout scheduling mutation called');
       setShowAddWorkout(false);
+      
+      // Force refresh the day data after a short delay to ensure the mutation completes
+      setTimeout(() => {
+        console.log('🔄 Force refreshing day data after mutation');
+        setSelectedDate(new Date(selectedDate));
+      }, 500);
       
     } catch (error) {
       console.error('❌ Error in handleWorkoutSelected:', error);

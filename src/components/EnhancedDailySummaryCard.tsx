@@ -272,7 +272,7 @@ export function EnhancedDailySummaryCard({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => onSwapDay('strength')}
+                    onClick={onSwapWorkout}
                     className="flex-1"
                   >
                     <RefreshCw className="h-3 w-3 mr-1" />
