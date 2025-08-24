@@ -1,0 +1,583 @@
+Awesome—here’s a practical, end-to-end guide you can drop into Cursor to let it **query Supabase tables** (read/write) and **verify data propagation** during tests, assuming you’re already logged in with the Supabase CLI.
+
+---
+
+# 1) Minimal prerequisites (confirm once in Cursor’s terminal)
+
+```bash
+# If you haven't yet, install CLI
+npm i -g supabase
+
+# Confirm you’re logged in already
+supabase --version
+supabase projects list
+```
+
+* The CLI is the canonical way to manage local + remote Supabase and is what we’ll lean on for environment/bootstrap. ([Supabase][1])
+
+---
+
+# 2) Link your local repo to the remote project (once per repo)
+
+In your project root (the one you’re opening in Cursor):
+
+```bash
+# You need the project ref, e.g. abcd1234 (find it in Studio’s URL or 'projects list')
+supabase link --project-ref <YOUR_PROJECT_REF>
+```
+
+* Linking binds the repo to a Supabase project so later CLI commands (types, migrations, remote DB, etc.) know where to act. ([Supabase][2])
+
+---
+
+# 3) Get connection details & keys into Cursor
+
+You’ll use **one of two access paths** depending on your test:
+
+* **App-path (RLS on):** use the project `anon` key + public REST/JS client.
+* **Backend-path (RLS off):** use the `service_role` key (server-only) for verification scripts. **Never ship this to the frontend.** ([Supabase][3])
+
+Find your:
+
+* **Project URL**: `https://<PROJECT_REF>.supabase.co`
+* **Keys**: `anon` and `service_role` (Studio → Settings → API).
+* **Postgres connection string**: Studio → “Connect” → Connection info & SSL cert. ([Supabase][4])
+
+> Note: Supabase’s guidance on API keys & signing keys has evolved—follow the current “Understanding API keys” & “JWT Signing Keys” docs and keep `service_role` secret. ([Supabase][5])
+
+Create a **.env.local** (Cursor picks this up nicely):
+
+```dotenv
+# Public (safe for client)
+VITE_SUPABASE_URL=https://<PROJECT_REF>.supabase.co
+VITE_SUPABASE_ANON_KEY=<YOUR_ANON_KEY>
+
+# Private (server-side Node scripts only; do NOT expose to client code)
+SUPABASE_SERVICE_ROLE_KEY=<YOUR_SERVICE_ROLE_KEY>
+
+# Optional: direct Postgres (psql) connection string for DB-level checks
+DATABASE_URL=postgresql://<user>:<pass>@<host>:<port>/<db>?sslmode=require
+```
+
+---
+
+# 4) Install the SDK for programmatic queries
+
+```bash
+npm i @supabase/supabase-js
+```
+
+* `supabase-js` is the primary client for select/insert/update/delete and works with filters, ordering, pagination, etc. ([Supabase][6])
+
+---
+
+# 5) Cursor-ready helpers (drop into `/scripts/supaClient.ts`)
+
+```ts
+// scripts/supaClient.ts
+import { createClient } from '@supabase/supabase-js';
+
+const url = process.env.VITE_SUPABASE_URL!;
+const anonKey = process.env.VITE_SUPABASE_ANON_KEY!;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Use for "app-like" queries with RLS enabled:
+export const supaPublic = createClient(url, anonKey);
+
+// Use ONLY in server-side Node scripts / tests (RLS bypass):
+export const supaAdmin = serviceKey
+  ? createClient(url, serviceKey)
+  : undefined;
+```
+
+* Passing `service_role` in `createClient` is supported for server-side admin tasks. ([GitHub][7])
+
+---
+
+# 6) Quick “view table entries” script (admin path)
+
+Create `/scripts/peek.ts`:
+
+```ts
+// scripts/peek.ts
+import 'dotenv/config';
+import { supaAdmin } from './supaClient';
+
+if (!supaAdmin) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+
+async function main() {
+  const { data, error, count } = await supaAdmin
+    .from('YOUR_TABLE')
+    .select('*', { count: 'exact', head: false })
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (error) throw error;
+  console.log(`Rows (${count ?? data?.length ?? 0}):`);
+  console.table(data);
+}
+main().catch((e) => (console.error(e), process.exit(1)));
+```
+
+Run it in Cursor’s terminal:
+
+```bash
+ts-node scripts/peek.ts
+```
+
+* `select`, `order`, and pagination behaviors are documented here. ([Supabase][6])
+
+---
+
+# 7) Verifying generation/propagation with a test (Vitest)
+
+Install Vitest & ts-node if needed:
+
+```bash
+npm i -D vitest ts-node @types/node
+```
+
+Add a test `/tests/propagation.test.ts`:
+
+```ts
+// /tests/propagation.test.ts
+import 'dotenv/config';
+import { describe, it, expect } from 'vitest';
+import { supaAdmin } from '../scripts/supaClient';
+
+describe('Data generation pipeline', () => {
+  it('creates a row and observes downstream propagation', async () => {
+    if (!supaAdmin) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+
+    // 1) Insert a test row
+    const payload = { external_id: crypto.randomUUID(), status: 'queued' };
+    const { data: inserted, error: insErr } = await supaAdmin
+      .from('jobs')
+      .insert(payload)
+      .select()
+      .single();
+    if (insErr) throw insErr;
+
+    // 2) Wait for your job/trigger/edge function to process it (pseudo)
+    // In real CI, you’d poll for status or listen to changes.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // 3) Verify the change propagated to dependent tables/views
+    const { data: result, error: selErr } = await supaAdmin
+      .from('job_results')
+      .select('*')
+      .eq('external_id', inserted.external_id)
+      .limit(1);
+    if (selErr) throw selErr;
+
+    expect(result?.length).toBe(1);
+    expect(result?.[0]?.status).toBe('complete');
+  });
+});
+```
+
+Run:
+
+```bash
+npx vitest run
+```
+
+* Insert & filter patterns follow the official `insert()` and filter docs; you can layer `eq`, `gt`, etc., and return rows via `.select().single()`. ([Supabase][8])
+
+---
+
+# 8) Alternative: REST (curl) checks from Cursor’s terminal
+
+Sometimes you just want a quick probe without Node:
+
+```bash
+curl -s \
+  'https://<PROJECT_REF>.supabase.co/rest/v1/YOUR_TABLE?select=*&order=created_at.desc&limit=10' \
+  -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+  -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY" \
+  | jq
+```
+
+* Supabase exposes a PostgREST-powered REST API; you pass the key in headers and use querystring filters/order. ([Supabase][6])
+
+> For backend/admin REST checks swap to `Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY` (never in browser code). ([Supabase][3])
+
+---
+
+# 9) Direct SQL (psql) for ground-truth validation
+
+1. Set a “remote” so CLI knows your DB:
+
+```bash
+# One-time: point to your Postgres connection URL (from Studio → Connect)
+supabase db remote set "$DATABASE_URL"
+```
+
+2. Open psql:
+
+```bash
+supabase db remote psql
+```
+
+3. Run checks:
+
+```sql
+select count(*) from your_table;
+select * from your_table order by created_at desc limit 25;
+```
+
+* `db remote set` and `psql` are documented by Supabase; the “Connect to Postgres” guide covers SSL certs and connection details if you need them locally. ([Supabase][9], [Supabase][10])
+
+---
+
+# 10) RLS & which key to use during tests
+
+* **App-behavior tests** (what a real user sees): use `anon` key (RLS on).
+* **Data-integrity/propagation tests** (pipelines, triggers, jobs): use `service_role` key in **server-side** scripts only. Do not expose this in client code or logs. ([Supabase][3])
+
+---
+
+# 11) Generating TypeScript types for safer queries in Cursor
+
+```bash
+# Generate DB types into a file Cursor can auto-complete against
+supabase gen types typescript --project-id <YOUR_PROJECT_REF> > src/types/supabase.ts
+```
+
+* The CLI can generate types from your schema so Cursor can infer columns in your queries. ([Supabase][11])
+
+Use in code:
+
+```ts
+import type { Database } from '../types/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient<Database>(
+  process.env.VITE_SUPABASE_URL!,
+  process.env.VITE_SUPABASE_ANON_KEY!
+);
+
+const { data } = await supabase.from('your_table').select('*');
+```
+
+---
+
+# 12) Common query recipes you can copy into Cursor
+
+**Read latest rows**
+
+```ts
+const { data, error } = await supaPublic
+  .from('events')
+  .select('*')
+  .order('created_at', { ascending: false })
+  .range(0, 49);
+```
+
+([Supabase][6])
+
+**Filtered read (status + time window)**
+
+```ts
+const { data, error } = await supaPublic
+  .from('jobs')
+  .select('*')
+  .eq('status', 'complete')
+  .gte('processed_at', '2025-08-01T00:00:00Z')
+  .order('processed_at', { ascending: false })
+  .limit(100);
+```
+
+([Supabase][12])
+
+**Create → return inserted row**
+
+```ts
+const { data, error } = await supaPublic
+  .from('tasks')
+  .insert({ title: 'Smoke test', priority: 3 })
+  .select()
+  .single();
+```
+
+([Supabase][8])
+
+**Update with JSON field**
+
+```ts
+const { data, error } = await supaAdmin!
+  .from('users')
+  .update({ profile: { theme: 'dark' }})
+  .eq('id', 'user_123')
+  .select()
+  .single();
+```
+
+([Supabase][13])
+
+---
+
+# 13) Suggested “Cursor tasks” you can run as you code
+
+Paste these as comments/instructions in your files so Cursor (the AI pair-dev) keeps context:
+
+```md
+# Cursor Task: DB Smoke Test
+- Use scripts/peek.ts to list last 25 rows in YOUR_TABLE.
+- If empty, insert a seed row, then re-run peek to confirm it appears.
+- Add a Vitest that inserts → polls → verifies propagation into job_results.
+
+# Cursor Task: App vs Admin parity
+- Duplicate a read test using supaPublic (anon) and supaAdmin (service_role).
+- Confirm RLS blocks the anon path for restricted rows, while admin sees them.
+```
+
+(These map directly onto the query patterns and RLS guidance above. ([Supabase][6]))
+
+---
+
+# 14) Troubleshooting quick hits
+
+* **401/403 with REST or JS client**
+  Check you’re using the right key (anon vs service\_role) and the correct project URL. Verify RLS policies for the target table. ([Supabase][3])
+
+* **Can’t connect with psql**
+  Use the **SSL-required** connection string from Studio “Connect” and download the root cert if prompted; `sslmode=require`. ([Supabase][10])
+
+* **Queries return only part of your data**
+  API has a default row limit (often 1,000). Use `.range()` or pagination. ([Supabase][6])
+
+---
+
+## That’s it
+
+With these pieces in your repo, Cursor can:
+
+* Run quick **peek** scripts,
+* Execute **REST/JS** queries with RLS on/off,
+* Run **Vitest** to assert **propagation & generation**, and
+* Drop to **psql** for ground-truth checks—all while you remain authenticated via the Supabase CLI and keep secrets in env files. ([Supabase][1])
+
+Got it—here’s a tight, **developer-facing guide** for accessing Supabase **tables programmatically** (CRUD + filters, pagination, realtime, and types), with patterns you can paste into Cursor.
+
+---
+
+# 0) Project & credentials (one-time)
+
+* **Project URL:** `https://<PROJECT_REF>.supabase.co`
+* **Keys:** `anon` (client, RLS-on) and `service_role` (server only, bypasses RLS—never ship to the browser). See REST base URL and key guidance. ([Supabase][1])
+* **RLS:** keep policies on for production; test with service role in server scripts when you need full visibility. ([Supabase][2])
+
+---
+
+# 1) JavaScript client setup
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL!,          // e.g., https://xxx.supabase.co
+  process.env.VITE_SUPABASE_ANON_KEY!      // or SUPABASE_SERVICE_ROLE_KEY in server-only scripts
+)
+```
+
+* `@supabase/supabase-js` is the primary SDK for CRUD on tables. ([Supabase][3])
+
+---
+
+# 2) Core CRUD recipes (tables)
+
+### Read (select)
+
+```ts
+// All columns (default limit ~1000)
+const { data, error } = await supabase
+  .from('todos')
+  .select('*')
+```
+
+* You can specify columns and aliases, and control limits. ([Supabase][3])
+
+### Insert (single or bulk)
+
+```ts
+// Single
+await supabase.from('todos').insert({ title: 'Write tests' })
+
+// Bulk
+await supabase.from('todos').insert([
+  { title: 'A' }, { title: 'B' }
+])
+```
+
+* `insert()` accepts an object or an array; add `.select()` to get inserted rows back. ([Supabase][4])
+
+### Update (with filters)
+
+```ts
+await supabase
+  .from('todos')
+  .update({ done: true })
+  .eq('id', 'uuid-row-id')
+```
+
+* Always pair `update()` with filters. ([Supabase][5])
+
+### Delete (with filters)
+
+```ts
+await supabase
+  .from('todos')
+  .delete()
+  .eq('id', 'uuid-row-id')
+```
+
+* `delete()` must be filtered; with RLS enabled, only rows visible via `SELECT` policies are deleted. ([Supabase][6])
+
+---
+
+# 3) Filtering, ordering, pagination
+
+```ts
+// Filter + order + page window
+const { data, error } = await supabase
+  .from('events')
+  .select('*')
+  .eq('type', 'deploy')
+  .gte('created_at', '2025-08-01T00:00:00Z')
+  .order('created_at', { ascending: false })
+  .range(0, 49) // first 50 rows
+```
+
+* Filters (`eq`, `gte`, etc.), ordering, and pagination mirror PostgREST semantics; default page size is \~1000 rows unless you use range/limit. ([Supabase][3])
+
+---
+
+# 4) REST (PostgREST) alternative
+
+Useful for **quick probes**, serverless jobs, or tools:
+
+```bash
+curl -s \
+  'https://<PROJECT_REF>.supabase.co/rest/v1/todos?select=*&order=created_at.desc&limit=10' \
+  -H "apikey: $ANON_OR_SERVICE_KEY" \
+  -H "Authorization: Bearer $ANON_OR_SERVICE_KEY"
+```
+
+* Base URL is `/rest/v1/…`; use query params for `select`, filters, order, pagination. ([Supabase][1])
+
+---
+
+# 5) Joins / related data (embedded selects)
+
+PostgREST lets you pull related rows by naming relationships in `select`:
+
+```ts
+const { data } = await supabase
+  .from('orders')
+  .select(`id, total, customer:customers(id, name)`)
+  .order('created_at', { ascending: false })
+```
+
+* Relationship selects and complex filtering are supported via PostgREST queries behind the SDK. (Techniques widely documented across REST & community examples.) ([Supabase][1], [Stack Overflow][7])
+
+---
+
+# 6) Upserts & conflict handling
+
+```ts
+await supabase
+  .from('profiles')
+  .upsert({ id: userId, display_name: 'Hashim' }, { onConflict: 'id' })
+  .select()
+```
+
+* Upsert uses Postgres `ON CONFLICT` under the hood (same reference family as insert/update docs). ([Supabase][4])
+
+---
+
+# 7) Realtime (verify propagation in tests/tools)
+
+Subscribe to live changes (great for confirming that inserts/updates reach downstream consumers):
+
+```ts
+const channel = supabase
+  .channel('table-db-changes')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
+    console.log('Change:', payload) // INSERT/UPDATE/DELETE payload
+  })
+  .subscribe()
+```
+
+* Works over websockets; you can scope to schema/table or listen broadcast vs. Postgres Changes depending on scale. ([Supabase][8])
+
+---
+
+# 8) Row Level Security (RLS) patterns
+
+* **App code:** use `anon` key; create policies that allow `select/insert/update/delete` based on `auth.uid()` or tenant fields.
+* **Admin scripts / CI data checks:** use `service_role` key **server-only** to bypass RLS and validate pipelines. ([Supabase][2])
+
+> Tip: During development, if a query “mysteriously” returns empty, it’s usually RLS. Add a temporary, narrow policy or test via service role to isolate. Community and feature guides cover common pitfalls. ([maxlynch.com][9], [DEV Community][10])
+
+---
+
+# 9) Strong typing (TypeScript)
+
+Generate DB types so Cursor can autocomplete table/column names:
+
+```bash
+supabase gen types typescript --project-id <PROJECT_REF> > src/types/supabase.ts
+```
+
+Use them:
+
+```ts
+import type { Database } from './types/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient<Database>(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_ANON_KEY!)
+type Profile = Database['public']['Tables']['profiles']['Row']
+
+const { data } = await supabase.from('profiles').select('id, display_name') // fully typed
+```
+
+* Official guide + CLI support for type generation. ([Supabase][11])
+
+---
+
+# 10) Error handling & result shapes
+
+Every call returns `{ data, error, count }` (where applicable). Pattern:
+
+```ts
+const { data, error, count } = await supabase
+  .from('logs')
+  .select('*', { count: 'exact', head: false })
+  .order('ts', { ascending: false })
+  .limit(100)
+
+if (error) throw error
+console.log(count, data?.length)
+```
+
+* Select options support `count` and `head` for efficient counting. ([Supabase][3])
+
+---
+
+# 11) When to prefer REST vs JS client
+
+* **JS client:** ergonomic CRUD with chainable filters; auth/session integration. ([Supabase][3])
+* **REST (curl/fetch):** quick probes, generic backends, PostgREST power users; same filter/order params via URL. ([Supabase][1])
+
+---
+
+# 12) Quick verification checklist (use in tests/CI)
+
+1. **Seed → Read:** `insert()` a deterministic row; `select()` it back with strict filters. ([Supabase][4])
+2. **Propagate:** either poll a downstream table/view with filters, or subscribe via Realtime and assert the payload. ([Supabase][8])
+3. **RLS parity:** run the same `select()` with anon vs service role to confirm policies. ([Supabase][2])
+4. **REST parity:** mirror the query over `/rest/v1` and compare results/headers (range, count). ([Supabase][1])
+
+---
+
