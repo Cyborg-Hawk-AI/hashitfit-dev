@@ -6,7 +6,7 @@ import { AddWorkoutModal } from "@/components/AddWorkoutModal";
 import { WorkoutService } from "@/lib/supabase/services/WorkoutService";
 
 // Import existing components
-import { WeeklyTimelineView } from "@/components/WeeklyTimelineView";
+// import { WeeklyTimelineView } from "@/components/WeeklyTimelineView";
 
 // Import modern components
 import { HeroCTACard } from "@/components/dashboard/modern/HeroCTACard";
@@ -795,8 +795,8 @@ export function ModernDashboard() {
           />
         </div>
 
-        {/* Weekly Overview - Keep existing WeeklyTimelineView */}
-        <div className="px-4 mb-4">
+        {/* Weekly Overview - Hidden per user request */}
+        {/* <div className="px-4 mb-4">
           <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/40 dark:border-slate-700/40 overflow-hidden">
             <WeeklyTimelineView
               weekData={weeklyData}
@@ -814,7 +814,7 @@ export function ModernDashboard() {
               onRefresh={handleRefreshWeeklyTimeline}
             />
           </div>
-        </div>
+        </div> */}
       </div>
 
       <AddWorkoutModal 

@@ -17,7 +17,7 @@ import { ProgressService } from "@/lib/supabase/services/ProgressService";
 import { format, startOfWeek, endOfWeek, addDays, parseISO, isSameDay } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { InteractiveAssistantPanel } from "@/components/InteractiveAssistantPanel";
-import { WeeklyTimelineView } from "@/components/WeeklyTimelineView";
+// import { WeeklyTimelineView } from "@/components/WeeklyTimelineView";
 import { EnhancedDailySummaryCard } from "@/components/EnhancedDailySummaryCard";
 import { PrescriptiveWeeklySummary } from "@/components/PrescriptiveWeeklySummary";
 import { ComingUpPreview } from "@/components/ComingUpPreview";
@@ -1003,8 +1003,8 @@ export default function PlannerPage() {
         {/* Section Separator */}
         <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
         
-        {/* Weekly Timeline View */}
-        <WeeklyTimelineView
+        {/* Weekly Timeline View - Hidden per user request */}
+        {/* <WeeklyTimelineView
           weekData={weekData.map(day => ({
             date: day.date,
             workoutTitle: day.hasWorkout ? "Upper Body Strength" : undefined,
@@ -1019,7 +1019,7 @@ export default function PlannerPage() {
           onAddWorkout={handleAddWorkout}
           isCollapsed={collapsedSections.weeklyTimeline}
           onToggleCollapse={() => toggleSection('weeklyTimeline')}
-        />
+        /> */}
         
         {/* Section Separator */}
         <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
