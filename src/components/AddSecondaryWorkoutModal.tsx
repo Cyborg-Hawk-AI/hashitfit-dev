@@ -71,6 +71,11 @@ export function AddSecondaryWorkoutModal({
   }, [isOpen, userId]);
 
   const loadWorkouts = async () => {
+    if (!userId) {
+      console.log('❌ No userId provided to loadWorkouts (AddSecondary)');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       console.log('🔍 Loading workouts for user (AddSecondary):', userId);
@@ -88,6 +93,7 @@ export function AddSecondaryWorkoutModal({
       }
       
       console.log('✅ User workouts loaded (AddSecondary):', userWorkoutData);
+      console.log('📊 User workouts count (AddSecondary):', userWorkoutData?.length || 0);
       setUserWorkouts(userWorkoutData || []);
 
       // Load public workout templates (you can create these or use a predefined list)
@@ -290,15 +296,17 @@ export function AddSecondaryWorkoutModal({
     workout.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Debug logging
-  console.log('🔍 AddSecondaryWorkoutModal Debug:', {
-    userWorkoutsCount: userWorkouts.length,
-    filteredUserWorkoutsCount: filteredUserWorkouts.length,
-    publicWorkoutsCount: publicWorkouts.length,
-    filteredPublicWorkoutsCount: filteredPublicWorkouts.length,
-    searchTerm,
-    isLoading
-  });
+  // Debug logging - only when modal is open
+  if (isOpen) {
+    console.log('🔍 AddSecondaryWorkoutModal Debug:', {
+      userWorkoutsCount: userWorkouts.length,
+      filteredUserWorkoutsCount: filteredUserWorkouts.length,
+      publicWorkoutsCount: publicWorkouts.length,
+      filteredPublicWorkoutsCount: filteredPublicWorkouts.length,
+      searchTerm,
+      isLoading
+    });
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

@@ -74,6 +74,11 @@ export function SwapWorkoutModal({
   }, [isOpen, userId]);
 
   const loadWorkouts = async () => {
+    if (!userId) {
+      console.log('❌ No userId provided to loadWorkouts');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       console.log('🔍 Loading workouts for user:', userId);
@@ -91,6 +96,7 @@ export function SwapWorkoutModal({
       }
       
       console.log('✅ User workouts loaded:', userWorkoutData);
+      console.log('📊 User workouts count:', userWorkoutData?.length || 0);
       setUserWorkouts(userWorkoutData || []);
 
       // Load public workout templates
@@ -338,15 +344,17 @@ export function SwapWorkoutModal({
     workout.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Debug logging
-  console.log('🔍 SwapWorkoutModal Debug:', {
-    userWorkoutsCount: userWorkouts.length,
-    filteredUserWorkoutsCount: filteredUserWorkouts.length,
-    publicWorkoutsCount: publicWorkouts.length,
-    filteredPublicWorkoutsCount: filteredPublicWorkouts.length,
-    searchTerm,
-    isLoading
-  });
+  // Debug logging - only when modal is open
+  if (isOpen) {
+    console.log('🔍 SwapWorkoutModal Debug:', {
+      userWorkoutsCount: userWorkouts.length,
+      filteredUserWorkoutsCount: filteredUserWorkouts.length,
+      publicWorkoutsCount: publicWorkouts.length,
+      filteredPublicWorkoutsCount: filteredPublicWorkouts.length,
+      searchTerm,
+      isLoading
+    });
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
