@@ -130,17 +130,18 @@ export function WeightProgressCard({
         </div>
       </CardHeader>
       {!collapsed && (
-        <CardContent className="pt-0 space-y-4">
-          <div className={`transition-all duration-300 ${isExpanded ? 'h-48' : 'h-24'} overflow-hidden`}>
+        <CardContent className="pt-0">
+          {/* Chart Container with proper spacing */}
+          <div className={`transition-all duration-300 ${isExpanded ? 'h-48' : 'h-52'} overflow-hidden mb-20`}>
             <ProgressChart
               data={weightData}
               singleMetric="weight"
             />
           </div>
           
-          {/* Coach Insights Section */}
+          {/* Coach Insights Section - positioned below chart with proper spacing */}
           {nutritionData && (
-            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+            <div className="mt-32 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
               <div className="flex items-center space-x-2 mb-3">
                 <Brain className="h-5 w-5 text-blue-600" />
                 <p className="text-sm font-semibold text-slate-800 dark:text-white">
@@ -151,7 +152,7 @@ export function WeightProgressCard({
                 {nutritionData.trendReason}
               </p>
               
-              {/* ... keep existing code (nutrition data grid) */}
+              {/* Nutrition data grid */}
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-2 bg-white/50 dark:bg-slate-800/50 rounded-lg">
                   <div className="flex justify-between items-center">
@@ -216,7 +217,8 @@ export function WeightProgressCard({
             </div>
           )}
           
-          <div className="text-center">
+          {/* Trend message */}
+          <div className="text-center mt-4">
             <p className={`text-sm font-medium ${isImproving ? 'text-green-600' : 'text-orange-600'}`}>
               {isImproving ? 'Trending down – keep it up 💪' : 'Stay consistent – you got this! 💪'}
             </p>

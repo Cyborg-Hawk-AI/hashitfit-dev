@@ -335,21 +335,7 @@ export class NutritionService {
     }
   }
 
-  static async getMealPlans(nutritionPlanId: string): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('meal_plans')
-        .select('*')
-        .eq('nutrition_plan_id', nutritionPlanId)
-        .order('order_index', { ascending: true });
-        
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching meal plans:', error);
-      return [];
-    }
-  }
+
 
   static async deleteMealLog(logId: string): Promise<boolean> {
     try {

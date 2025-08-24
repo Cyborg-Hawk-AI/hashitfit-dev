@@ -631,25 +631,6 @@ export class WorkoutService {
 
   // Add new methods for handling exercise unchecking
 
-  static async deleteWorkoutLog(logId: string): Promise<boolean> {
-    try {
-      // First delete all related exercise logs to maintain referential integrity
-      await this.deleteExerciseLogs(logId);
-      
-      // Then delete the workout log
-      const { error } = await supabase
-        .from('workout_logs')
-        .delete()
-        .eq('id', logId);
-        
-      if (error) throw error;
-      return true;
-    } catch (error) {
-      console.error('Error deleting workout log:', error);
-      return false;
-    }
-  }
-
   static async deleteExerciseLogs(workoutLogId: string): Promise<boolean> {
     try {
       const { error } = await supabase

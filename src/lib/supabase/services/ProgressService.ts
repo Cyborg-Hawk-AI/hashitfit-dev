@@ -152,6 +152,122 @@ export class ProgressService {
     }
   }
 
+  // Get weight progress data for a user
+  static async getWeightProgressData(userId: string): Promise<{ date: string; value: number }[]> {
+    try {
+      // First, get the user's initial assessment data (get the earliest one if multiple exist)
+      const { data: assessmentData, error: assessmentError } = await supabase
+        .from('assessment_data')
+        .select('weight, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (assessmentError) {
+        console.error('Error fetching assessment data:', assessmentError);
+        return [];
+      }
+
+      // Then, get all progress metrics with weight data
+      const { data: progressData, error: progressError } = await supabase
+        .from('progress_metrics')
+        .select('weight, measurement_date')
+        .eq('user_id', userId)
+        .not('weight', 'is', null)
+        .order('measurement_date', { ascending: true });
+
+      if (progressError) {
+        console.error('Error fetching progress metrics:', progressError);
+        return [];
+      }
+
+      // Combine assessment data (initial weight) with progress metrics
+      const weightData: { date: string; value: number }[] = [];
+
+      // Add initial weight from assessment
+      if (assessmentData?.weight && assessmentData?.created_at) {
+        weightData.push({
+          date: assessmentData.created_at.split('T')[0], // Get just the date part
+          value: assessmentData.weight
+        });
+      }
+
+      // Add progress metrics
+      if (progressData) {
+        progressData.forEach(metric => {
+          if (metric.weight && metric.measurement_date) {
+            weightData.push({
+              date: metric.measurement_date,
+              value: metric.weight
+            });
+          }
+        });
+      }
+
+      // Sort by date and remove duplicates
+      const uniqueData = weightData
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .filter((item, index, self) => 
+          index === 0 || item.date !== self[index - 1].date
+        );
+
+      return uniqueData;
+    } catch (error) {
+      console.error('Error fetching weight progress data:', error);
+      return [];
+    }
+  }
+
+  // Get user's initial weight from assessment
+  static async getInitialWeight(userId: string): Promise<number | null> {
+    try {
+      const { data, error } = await supabase
+        .from('assessment_data')
+        .select('weight')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error('Error fetching initial weight:', error);
+        return null;
+      }
+
+      return data?.weight || null;
+    } catch (error) {
+      console.error('Error fetching initial weight:', error);
+      return null;
+    }
+  }
+
+  // Get user's current weight (latest progress metric or initial weight)
+  static async getCurrentWeight(userId: string): Promise<number | null> {
+    try {
+      // First try to get the latest progress metric
+      const { data: latestMetric, error: metricError } = await supabase
+        .from('progress_metrics')
+        .select('weight')
+        .eq('user_id', userId)
+        .not('weight', 'is', null)
+        .order('measurement_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestMetric?.weight) {
+        return latestMetric.weight;
+      }
+
+      // If no progress metrics, fall back to initial weight from assessment
+      return await this.getInitialWeight(userId);
+    } catch (error) {
+      console.error('Error fetching current weight:', error);
+      // Fall back to initial weight
+      return await this.getInitialWeight(userId);
+    }
+  }
+
   // Analytics
   static async getWeightTrend(userId: string, period: 'week' | 'month' | 'quarter' | 'half-year' | 'year'): Promise<{date: string, value: number}[]> {
     try {

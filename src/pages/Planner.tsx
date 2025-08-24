@@ -636,8 +636,8 @@ export default function PlannerPage() {
         });
         
         // Refresh data
-        queryClient.invalidateQueries(['workoutSchedules']);
-        queryClient.invalidateQueries(['weeklyWorkouts']);
+        queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
+        queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
       }
     } catch (error) {
       console.error('Error optimizing week:', error);
@@ -745,11 +745,11 @@ export default function PlannerPage() {
     console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData, scheduledWorkouts, todayScheduledWorkouts');
     
     // Refresh the data after a workout is added
-    queryClient.invalidateQueries(['workoutSchedules']);
-    queryClient.invalidateQueries(['weeklyWorkouts']);
-    queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
-    queryClient.invalidateQueries(['scheduledWorkouts']);
-    queryClient.invalidateQueries(['todayScheduledWorkouts']);
+    queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
+    queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
+    queryClient.invalidateQueries({ queryKey: ['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')] });
+    queryClient.invalidateQueries({ queryKey: ['scheduledWorkouts'] });
+    queryClient.invalidateQueries({ queryKey: ['todayScheduledWorkouts'] });
     
     // Force a re-render by updating the selectedDate state
     console.log('🔄 Force refreshing day data by updating selectedDate');
@@ -770,11 +770,11 @@ export default function PlannerPage() {
     console.log('📊 Invalidating queries: workoutSchedules, weeklyWorkouts, dailyData, scheduledWorkouts, todayScheduledWorkouts');
     
     // Refresh the data after a workout is swapped
-    queryClient.invalidateQueries(['workoutSchedules']);
-    queryClient.invalidateQueries(['weeklyWorkouts']);
-    queryClient.invalidateQueries(['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')]);
-    queryClient.invalidateQueries(['scheduledWorkouts']);
-    queryClient.invalidateQueries(['todayScheduledWorkouts']);
+    queryClient.invalidateQueries({ queryKey: ['workoutSchedules'] });
+    queryClient.invalidateQueries({ queryKey: ['weeklyWorkouts'] });
+    queryClient.invalidateQueries({ queryKey: ['dailyData', userId, format(selectedDate, 'yyyy-MM-dd')] });
+    queryClient.invalidateQueries({ queryKey: ['scheduledWorkouts'] });
+    queryClient.invalidateQueries({ queryKey: ['todayScheduledWorkouts'] });
     
     // Force a re-render by updating the selectedDate state
     console.log('🔄 Force refreshing day data by updating selectedDate');
@@ -1071,6 +1071,9 @@ export default function PlannerPage() {
             onToggleCollapse={() => toggleSection('weeklySummary')}
           />
         )}
+        
+        {/* Bottom spacing for floating action buttons and sticky bar */}
+        <div className="h-40"></div>
       </main>
       
       {/* Sticky bottom bar */}

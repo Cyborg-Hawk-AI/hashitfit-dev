@@ -733,6 +733,9 @@ export default function WorkoutsPage() {
             </AnimatedCard>
           )}
         </div>
+        
+        {/* Bottom spacing for floating action buttons and sticky bar */}
+        <div className="h-32"></div>
       </main>
 
       {/* Sticky Footer Bar - Show for first incomplete workout */}

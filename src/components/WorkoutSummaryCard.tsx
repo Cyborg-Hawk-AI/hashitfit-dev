@@ -22,11 +22,6 @@ interface WorkoutSummaryCardProps {
 }
 
 export function WorkoutSummaryCard({ workout, onStartWorkout, className }: WorkoutSummaryCardProps) {
-  const getCurrentTime = () => {
-    const now = new Date();
-    const finishTime = new Date(now.getTime() + workout.estimatedDuration * 60000);
-    return finishTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   const getCategoryColor = (category: string) => {
     switch (category.toLowerCase()) {
@@ -76,10 +71,7 @@ export function WorkoutSummaryCard({ workout, onStartWorkout, className }: Worko
             <span>Exercises: {workout.exercises.length}</span>
             <span>Difficulty: {workout.difficulty}/10</span>
           </div>
-          <div className="flex items-center text-sm text-indigo-700">
-            <Clock className="h-4 w-4 mr-1" />
-            <span>Estimated Finish: {getCurrentTime()}</span>
-          </div>
+
         </div>
 
         {/* Start Workout Button - Integrated */}

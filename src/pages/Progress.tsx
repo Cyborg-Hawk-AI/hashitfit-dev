@@ -327,6 +327,9 @@ export default function ProgressPage() {
             className="animate-fade-in"
           />
         </div>
+        
+        {/* Bottom spacing for floating action buttons */}
+        <div className="h-32"></div>
       </main>
       
       <NavigationBar />

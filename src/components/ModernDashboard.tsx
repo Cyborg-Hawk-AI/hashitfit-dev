@@ -26,6 +26,7 @@ import { useAICoach } from "@/hooks/useAICoach";
 import { NutritionService } from "@/lib/supabase/services/NutritionService";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { ProgressService } from "@/lib/supabase/services/ProgressService";
 
 export function ModernDashboard() {
   // For Dashboard, we always want to show today's workout by default
@@ -562,15 +563,25 @@ export function ModernDashboard() {
 
   // completedItems is now destructured from useDashboardData() above
 
-  const weightData = [
-    { date: '2025-06-01', value: 77.0 },
-    { date: '2025-06-03', value: 76.8 },
-    { date: '2025-06-05', value: 76.5 },
-    { date: '2025-06-07', value: 76.2 },
-    { date: '2025-06-09', value: 75.9 },
-    { date: '2025-06-11', value: 75.6 },
-    { date: '2025-06-13', value: 75.2 },
-  ];
+  // Fetch real weight data
+  const { data: weightData = [], isLoading: isLoadingWeightData } = useQuery({
+    queryKey: ['weightProgressData', userId],
+    queryFn: () => ProgressService.getWeightProgressData(userId!),
+    enabled: !!userId,
+  });
+
+  // Fetch initial and current weight
+  const { data: initialWeight } = useQuery({
+    queryKey: ['initialWeight', userId],
+    queryFn: () => ProgressService.getInitialWeight(userId!),
+    enabled: !!userId,
+  });
+
+  const { data: currentWeight } = useQuery({
+    queryKey: ['currentWeight', userId],
+    queryFn: () => ProgressService.getCurrentWeight(userId!),
+    enabled: !!userId,
+  });
 
   // Generate dynamic coach insights based on real data
   const generateCoachInsights = () => {
@@ -785,8 +796,8 @@ export function ModernDashboard() {
         {/* Enhanced Weight Progress Card with Nutrition Context and Coach Insights */}
         <div className="px-4 mb-4">
           <WeightProgressCard
-            currentWeight={75.2}
-            startWeight={77.0}
+            currentWeight={currentWeight || undefined}
+            startWeight={initialWeight || undefined}
             weightData={weightData}
             nutritionData={nutritionData}
             onAddWeight={() => console.log('Add weight modal')}
@@ -794,6 +805,9 @@ export function ModernDashboard() {
             onToggleCollapse={() => toggleSection('weightProgress')}
           />
         </div>
+
+        {/* Bottom spacing for floating action buttons */}
+        <div className="h-32"></div>
 
         {/* Weekly Overview - Hidden per user request */}
         {/* <div className="px-4 mb-4">

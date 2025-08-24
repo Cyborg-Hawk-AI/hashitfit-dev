@@ -91,6 +91,8 @@ export default function DashboardPage() {
       
       <main className="animate-fade-in">
         <ModernDashboard />
+        {/* Bottom spacing for floating action buttons */}
+        <div className="h-32"></div>
       </main>
       
       <NavigationBar />
