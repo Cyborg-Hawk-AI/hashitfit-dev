@@ -1,0 +1,212 @@
+Here’s the straight answer first:
+
+**Your code is wrong because it’s still using the deprecated Assistants v1 flow (threads/runs) without the required beta header**. The OpenAI error explicitly says so. If you want Option 2 (Responses API), stop creating threads/runs and switch your calls to `POST /v1/responses` (no beta header required). ([OpenAI Community][1], [OpenAI Platform][2])
+
+---
+
+# Developer Guide — Migrate to the **Responses API** for a snappy, ChatGPT-like assistant
+
+## 0) Why move to Responses?
+
+* **Assistants v1** requires `OpenAI-Beta: assistants=v2` now, and OpenAI has been guiding devs toward **Responses API** for simpler, unified chat + tools + streaming. Your error is exactly the v1 deprecation warning. ([OpenAI Community][1], [OpenAI Platform][3])
+* **Responses API** endpoint: `POST https://api.openai.com/v1/responses`. It supports streaming and structured outputs. ([OpenAI Platform][2])
+
+---
+
+## 1) The one endpoint you need
+
+**Endpoint**: `POST /v1/responses`
+**Headers**:
+
+* `Authorization: Bearer ${OPENAI_API_KEY}`
+* `Content-Type: application/json`
+
+**Minimal request**:
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "input": "Hello!",
+  "stream": true
+}
+```
+
+This returns a **Server-Sent Events** (SSE) stream you can proxy from your Supabase Edge Function. ([OpenAI Platform][2])
+
+**Structured outputs (optional)**: If you want the model to emit strict JSON (handy for tool/adapter calls), use the structured outputs guide (JSON schema). ([OpenAI Platform][4])
+
+---
+
+## 2) Streaming 101 (SSE) — how the wire format works
+
+SSE responses use `text/event-stream`, UTF-8, with lines like:
+
+```
+event: message
+data: {...}
+
+```
+
+Each message is separated by a blank line. Keep the connection open and send periodic comments (`: keepalive\n\n`) if needed. Client side uses `EventSource`. ([MDN Web Docs][5], [html.spec.whatwg.org][6])
+
+OpenAI’s docs include streaming examples and event sequencing for the **Responses** API. Follow their SSE framing exactly. ([OpenAI Platform][7])
+
+---
+
+## 3) Supabase Edge Function — streaming proxy patterns (Deno)
+
+**Key points**:
+
+* Set `Content-Type: text/event-stream; charset=utf-8`, `Cache-Control: no-cache`, `Connection: keep-alive`.
+* Use Deno’s streaming APIs to pipe chunks as they arrive from OpenAI to the client.
+* Send periodic `: ping\n\n` comments to keep the connection alive.
+* Close the controller on completion/error.
+  Supabase’s Edge Functions guide covers function setup; streaming requires returning a `Response` whose body is a `ReadableStream`. ([Supabase][8])
+
+Supabase has additional notes and examples on running AI/embeddings in Edge Functions and generally handling model calls from functions. ([Supabase][9])
+
+**Why SSE details matter**: Mis-set headers or buffering can break token-by-token delivery. The HTML/WHATWG and MDN specs define the canonical format & rules. ([html.spec.whatwg.org][10], [MDN Web Docs][5])
+
+---
+
+## 4) Example: Supabase Edge Function (Deno) proxying OpenAI **Responses** stream
+
+```ts
+// supabase/functions/ai-chat/index.ts
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
+Deno.serve(async (req) => {
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const { input, system, tools, response_format } = await req.json();
+
+  const openaiReq = {
+    model: "gpt-4o-mini",
+    // You can pass an array to "input" for multi-part content; keep it simple here:
+    input: [
+      ...(system ? [{ role: "system", content: system }] : []),
+      { role: "user", content: input }
+    ],
+    stream: true,
+    ...(tools ? { tools } : {}),
+    ...(response_format ? { response_format } : {})
+  };
+
+  const upstream = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(openaiReq)
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    const body = await upstream.text();
+    return new Response(`Upstream error: ${body}`, { status: 500 });
+  }
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+
+  // Write SSE headers & pipe directly
+  (async () => {
+    const encoder = new TextEncoder();
+    // Optional keepalive every 15s:
+    const keepalive = setInterval(() => writer.write(encoder.encode(`: ping\n\n`)), 15000);
+
+    try {
+      for await (const chunk of upstream.body) {
+        // Pass through exactly as received (already SSE-formatted by OpenAI)
+        await writer.write(chunk);
+      }
+    } catch (e) {
+      await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`));
+    } finally {
+      clearInterval(keepalive);
+      await writer.close();
+    }
+  })();
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      // CORS, if calling from your app:
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
+});
+```
+
+* This function **does not** create threads/runs; it simply proxies `POST /v1/responses` and streams the result.
+* The incoming SSE from OpenAI is passed through untouched, matching the spec. ([OpenAI Platform][2], [MDN Web Docs][5])
+
+---
+
+## 5) Frontend consumption (EventSource)
+
+Your UI should connect with `EventSource` (or fetch + ReadableStream). With SSE:
+
+```ts
+const es = new EventSource("/functions/v1/ai-chat"); // or your proxy URL
+
+es.onmessage = (e) => {
+  const payload = e.data;
+  // Payload chunks may be JSON strings per OpenAI's event format
+  // Append to UI progressively
+};
+
+es.addEventListener("error", () => es.close());
+```
+
+Reference: MDN’s EventSource docs and SSE format. ([MDN Web Docs][11])
+
+---
+
+## 6) Tooling & structured outputs (optional but recommended)
+
+* **Structured outputs**: Define a JSON schema (e.g., for “assistant\_action”: fetch data, write memory, etc.) so the model emits validated JSON your app can parse. This reduces hallucinations. ([OpenAI Platform][4])
+* **Tool calls** with Responses: The API supports declaring tools so the model can invoke them deterministically. See “Responses” + “Streaming” references for correct event handling (tool calls also stream). ([OpenAI Platform][2])
+
+---
+
+## 7) Supabase specifics & gotchas
+
+* **Edge Functions** run on Deno; stream by returning a `ReadableStream` response with the correct headers. ([Supabase][8])
+* Some earlier bugs/limitations around SSE invocation from clients have existed; ensure your client calls the **Edge Function URL directly** and not through libraries that don’t expose the stream. (Historical context in issues/threads.) ([GitHub][12])
+* Supabase also provides built-in AI helpers (embeddings, local runners) you can combine with Responses, but that’s optional. ([Supabase][9])
+
+---
+
+## 8) Testing checklist
+
+1. **Happy path**: Small prompt → <500ms TTFB; tokens render as they arrive. (Use DevTools “Timing” tab.) OpenAI streaming docs show expected event cadence. ([OpenAI Platform][7])
+2. **Backpressure**: Ensure your proxy writes chunks without buffering (no `await new Response(await upstream.text())`).
+3. **Keepalive**: Confirm long conversations don’t drop (send `: ping\n\n` comments). SSE spec allows comment frames. ([MDN Web Docs][5])
+4. **CORS**: If you’re calling from a web app, set appropriate `Access-Control-Allow-Origin`.
+5. **Error frames**: When upstream fails, send an SSE `event: error` with JSON `data`.
+6. **JSON mode**: Validate schema outputs when you enable structured outputs. ([OpenAI Platform][4])
+
+---
+
+## 9) Migration summary (what to change in your code)
+
+* **Stop** calling:
+
+  * `POST /v1/threads`
+  * `POST /v1/threads/{id}/messages`
+  * `POST /v1/threads/{id}/runs`
+* **Start** calling:
+
+  * `POST /v1/responses` with `"stream": true`, proxied through your **Supabase Edge Function** as an SSE stream. ([OpenAI Platform][2])
+* If you ever go back to threads/runs, you **must** set `OpenAI-Beta: assistants=v2`. That’s what your error complained about. ([OpenAI Community][1])
+
+---
+
+## 10) Final, declarative statement about your error
+
+> Your deployed Edge Function attempted to **create a thread/run using Assistants v1 semantics** without the mandatory `OpenAI-Beta: assistants=v2` header, which is why OpenAI returned `invalid_beta`. To use **Option 2**, replace those calls with a single `POST /v1/responses` streaming request and proxy it via SSE from your Edge Function. ([OpenAI Community][1], [OpenAI Platform][2])

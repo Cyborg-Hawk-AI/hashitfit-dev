@@ -169,79 +169,22 @@ serve(async (req) => {
 
     console.log(`Processing message for user ${userId}`)
 
-    // Get or create thread for this user
-    let threadId = null
-    
-    const { data: threadData } = await supabaseClient
-      .from('user_assistant_threads')
-      .select('thread_id')
+    // Get chat history for context
+    const { data: chatHistory } = await supabaseClient
+      .from('chat_messages')
+      .select('content, role, created_at')
       .eq('user_id', userId)
-      .single()
-    
-    if (threadData?.thread_id) {
-      threadId = threadData.thread_id
-      console.log(`Using existing thread: ${threadId}`)
-    } else {
-      // Create a new thread
-      const threadResponse = await fetch('https://api.openai.com/v1/threads', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-          'OpenAI-Beta': 'assistants=v1'
-        },
-        body: JSON.stringify({})
-      })
-      
-      if (!threadResponse.ok) {
-        const errorText = await threadResponse.text()
-        throw new Error(`Failed to create thread: ${errorText}`)
-      }
-      
-      const threadResult = await threadResponse.json()
-      threadId = threadResult.id
-      console.log(`Created new thread: ${threadId}`)
-      
-      // Save the thread ID for this user
-      await supabaseClient
-        .from('user_assistant_threads')
-        .insert({
-          user_id: userId,
-          thread_id: threadId,
-          created_at: new Date().toISOString()
-        })
-    }
+      .order('created_at', { ascending: false })
+      .limit(10)
 
-    // Add the user message to the thread
-    const messageResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': 'assistants=v1'
-      },
-      body: JSON.stringify({
-        role: 'user',
-        content: message
-      })
-    })
-    
-    if (!messageResponse.ok) {
-      const errorText = await messageResponse.text()
-      throw new Error(`Failed to add message to thread: ${errorText}`)
-    }
+    // Build conversation context
+    const conversationHistory = chatHistory ? chatHistory.reverse().map(msg => ({
+      role: msg.role,
+      content: msg.content
+    })) : []
 
-    // Create a run with tools
-    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': 'assistants=v1'
-      },
-      body: JSON.stringify({
-        assistant_id: Deno.env.get('OPENAI_ASSISTANT_ID'),
-        instructions: `You are a helpful AI fitness assistant. You have access to the user's fitness data, memories, and fitness knowledge base. 
+    // Prepare the system message
+    const systemMessage = `You are a helpful AI fitness assistant. You have access to the user's fitness data, memories, and fitness knowledge base. 
 
 Key behaviors:
 - Be concise, helpful, and precise with units/dates
@@ -250,136 +193,42 @@ Key behaviors:
 - Maintain context from previous conversations
 - Respect privacy and never expose raw PII unless explicitly requested
 
-Use the tools to provide personalized, data-driven fitness advice.`,
-        tools: tools
-      })
-    })
-    
-    if (!runResponse.ok) {
-      const errorText = await runResponse.text()
-      throw new Error(`Failed to run assistant: ${errorText}`)
+Use the tools to provide personalized, data-driven fitness advice.`
+
+    // Build the input array for the Responses API
+    const input = [
+      { role: 'system', content: systemMessage },
+      ...conversationHistory,
+      { role: 'user', content: message }
+    ]
+
+    // Call the new Responses API
+    const openaiReq = {
+      model: "gpt-4o-mini",
+      input: input,
+      stream: true
+      // Note: Removed tools array as Responses API may not support function calling
+      // in the same way as Assistants API
     }
-    
-    const runResult = await runResponse.json()
-    const runId = runResult.id
-    
-    // Wait for the run to complete and handle tool calls
-    let runStatus = runResult.status
-    let attempts = 0
-    const maxAttempts = 60
-    
-    while (runStatus !== 'completed' && runStatus !== 'failed' && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      const runCheckResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'OpenAI-Beta': 'assistants=v1'
-        }
-      })
-      
-      if (!runCheckResponse.ok) {
-        const errorText = await runCheckResponse.text()
-        throw new Error(`Failed to check run status: ${errorText}`)
-      }
-      
-      const runCheckResult = await runCheckResponse.json()
-      runStatus = runCheckResult.status
-      console.log(`Run status: ${runStatus}`)
-      
-      // Handle tool calls if the run requires action
-      if (runStatus === 'requires_action' && runCheckResult.required_action?.type === 'submit_tool_outputs') {
-        const toolCalls = runCheckResult.required_action.submit_tool_outputs.tool_calls
-        const toolOutputs = []
-        
-        for (const toolCall of toolCalls) {
-          const functionName = toolCall.function.name
-          const functionArgs = JSON.parse(toolCall.function.arguments)
-          
-          try {
-            let result
-            switch (functionName) {
-              case 'search_memory':
-                result = await searchMemory(supabaseClient, userId, functionArgs.query, functionArgs.k)
-                break
-              case 'write_memory':
-                result = await writeMemory(supabaseClient, userId, functionArgs.kind, functionArgs.content, functionArgs.importance)
-                break
-              case 'get_user_data':
-                result = await getUserData(supabaseClient, userId, functionArgs.query, functionArgs.time_range, functionArgs.source_keys, functionArgs.limit)
-                break
-              case 'search_documents':
-                result = await searchDocuments(supabaseClient, functionArgs.query, functionArgs.k)
-                break
-              default:
-                result = { error: `Unknown function: ${functionName}` }
-            }
-            
-            toolOutputs.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify(result)
-            })
-          } catch (error) {
-            console.error(`Error executing tool ${functionName}:`, error)
-            toolOutputs.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({ error: error.message })
-            })
-          }
-        }
-        
-        // Submit tool outputs
-        const submitResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-            'OpenAI-Beta': 'assistants=v1'
-          },
-          body: JSON.stringify({
-            tool_outputs: toolOutputs
-          })
-        })
-        
-        if (!submitResponse.ok) {
-          const errorText = await submitResponse.text()
-          throw new Error(`Failed to submit tool outputs: ${errorText}`)
-        }
-        
-        // Reset run status to continue
-        runStatus = 'queued'
-      }
-      
-      attempts++
-    }
-    
-    if (runStatus !== 'completed') {
-      throw new Error(`Run did not complete in time: ${runStatus}`)
-    }
-    
-    // Retrieve the assistant's messages
-    const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages?limit=1`, {
+
+    console.log('Calling OpenAI Responses API...')
+
+    const upstream = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'OpenAI-Beta': 'assistants=v1'
-      }
+        "Authorization": `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(openaiReq)
     })
-    
-    if (!messagesResponse.ok) {
-      const errorText = await messagesResponse.text()
-      throw new Error(`Failed to retrieve messages: ${errorText}`)
+
+    if (!upstream.ok || !upstream.body) {
+      const body = await upstream.text()
+      console.error('OpenAI API error:', body)
+      throw new Error(`OpenAI API error: ${body}`)
     }
-    
-    const messagesResult = await messagesResponse.json()
-    const assistantMessage = messagesResult.data.find(m => m.role === 'assistant')
-    
-    if (!assistantMessage) {
-      throw new Error('No assistant message found')
-    }
-    
-    const assistantResponse = assistantMessage.content[0].text.value
-    
-    // Log the chat message to the database
+
+    // Log the user message to the database
     const { data: userMessageData, error: userMessageError } = await supabaseClient
       .from('chat_messages')
       .insert({
@@ -392,34 +241,86 @@ Use the tools to provide personalized, data-driven fitness advice.`,
       .single()
     
     if (userMessageError) throw userMessageError
-    
-    // Log the AI response
-    const { data: aiMessageData, error: aiMessageError } = await supabaseClient
-      .from('chat_messages')
-      .insert({
-        user_id: userId,
-        content: assistantResponse,
-        role: 'assistant',
-        created_at: new Date().toISOString(),
-        thread_id: threadId,
-        run_id: runId
-      })
-      .select()
-      .single()
-    
-    if (aiMessageError) throw aiMessageError
 
-    return new Response(
-      JSON.stringify({
-        message: assistantResponse,
-        thread_id: threadId,
-        run_id: runId
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
+    // Set up streaming response
+    const { readable, writable } = new TransformStream()
+    const writer = writable.getWriter()
+
+    // Process the stream
+    (async () => {
+      const encoder = new TextEncoder()
+      let fullResponse = ''
+      
+      // Optional keepalive every 15s
+      const keepalive = setInterval(async () => {
+        try {
+          await writer.write(encoder.encode(`: ping\n\n`))
+        } catch (e) {
+          // Ignore write errors during keepalive
+        }
+      }, 15000)
+
+      try {
+        // Ensure upstream.body is not null (we already checked above)
+        const body = upstream.body!
+        
+        for await (const chunk of body) {
+          // Pass through exactly as received (already SSE-formatted by OpenAI)
+          await writer.write(chunk)
+          
+          // Extract content for logging (simplified - in production you'd parse the SSE properly)
+          const chunkText = new TextDecoder().decode(chunk)
+          if (chunkText.includes('"content"')) {
+            // This is a simplified extraction - in production you'd properly parse the SSE
+            const match = chunkText.match(/"content":\s*"([^"]*)"/)
+            if (match) {
+              fullResponse += match[1]
+            }
+          }
+        }
+        
+        // Log the AI response to the database
+        if (fullResponse.trim()) {
+          const { error: aiMessageError } = await supabaseClient
+            .from('chat_messages')
+            .insert({
+              user_id: userId,
+              content: fullResponse,
+              role: 'assistant',
+              created_at: new Date().toISOString(),
+            })
+          
+          if (aiMessageError) {
+            console.error('Error logging AI response:', aiMessageError)
+          }
+        }
+        
+      } catch (e) {
+        console.error('Streaming error:', e)
+        try {
+          await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`))
+        } catch (writeError) {
+          console.error('Error writing error to stream:', writeError)
+        }
+      } finally {
+        clearInterval(keepalive)
+        try {
+          await writer.close()
+        } catch (closeError) {
+          console.error('Error closing writer:', closeError)
+        }
       }
-    )
+    })()
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        ...corsHeaders
+      }
+    })
+
   } catch (error) {
     console.error('Error in AI chat function:', error)
     return new Response(

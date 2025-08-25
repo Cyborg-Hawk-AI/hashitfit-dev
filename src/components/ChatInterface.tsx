@@ -102,60 +102,107 @@ export function ChatInterface({ isOpen, onClose }: ChatInterfaceProps) {
   }, [isAuthenticated, userId]);
 
   const handleSendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+
     const userMessage = input.trim();
-    if (!userMessage || isLoading) return;
-
-    // Check if user is authenticated
-    if (!isAuthenticated || !userId) {
-      setError('Please log in to use the AI fitness assistant.');
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to use the AI fitness assistant.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setInput("");
-    const userMessageObj: ChatMessage = {
-      user_id: userId,
-      content: userMessage,
-      role: "user",
-      created_at: new Date().toISOString()
-    };
-
-    setMessages((prev) => [...prev, userMessageObj]);
     setIsLoading(true);
     setIsStreaming(true);
     setStreamingMessage("");
     setError(null); // Clear any previous errors
 
     try {
+      // Create user message object
+      const userMessageObj: ChatMessage = {
+        user_id: userId,
+        content: userMessage,
+        role: "user",
+        created_at: new Date().toISOString()
+      };
+
       // Save user message to Supabase
       await aiChatService.saveChatMessage(userMessageObj);
 
-      // Call the enhanced edge function
-      const response = await sendChatMessage(userMessage);
-      
-      // Create assistant message
+      // Add user message to UI immediately
+      setMessages((prev) => [...prev, userMessageObj]);
+
+      // Create a placeholder for the assistant message
+      const assistantMessageId = `temp-${Date.now()}`;
       const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
         user_id: userId,
-        content: response,
+        content: "",
         role: "assistant",
         created_at: new Date().toISOString()
       };
 
-      // Save assistant message
-      await aiChatService.saveChatMessage(assistantMessage);
-
-      // Add to messages
+      // Add placeholder to messages
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Show success toast
-      toast({
-        title: "Message sent",
-        description: "Your fitness assistant has responded!",
-      });
+      // Call the streaming API
+      const response = await sendChatMessage(
+        userMessage,
+        // onChunk callback - called for each piece of the response
+        (chunk: string) => {
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: msg.content + chunk }
+                : msg
+            )
+          );
+        },
+        // onComplete callback - called when the full response is received
+        async (fullMessage: string) => {
+          // Update the message with the complete response
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: fullMessage }
+                : msg
+            )
+          );
+
+          // Save the complete assistant message to Supabase
+          const completeAssistantMessage: ChatMessage = {
+            user_id: userId,
+            content: fullMessage,
+            role: "assistant",
+            created_at: new Date().toISOString()
+          };
+
+          try {
+            await aiChatService.saveChatMessage(completeAssistantMessage);
+          } catch (saveError) {
+            console.error('Error saving assistant message:', saveError);
+          }
+
+          // Show success toast
+          toast({
+            title: "Message sent",
+            description: "Your fitness assistant has responded!",
+          });
+        },
+        // onError callback - called if there's an error
+        (errorMessage: string) => {
+          setError(errorMessage);
+          
+          // Update the placeholder message with the error
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: `Error: ${errorMessage}` }
+                : msg
+            )
+          );
+
+          toast({
+            title: "Error",
+            description: errorMessage,
+            variant: "destructive"
+          });
+        }
+      );
 
     } catch (error) {
       console.error('Error in chat flow:', error);

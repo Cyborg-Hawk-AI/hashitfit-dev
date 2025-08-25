@@ -225,80 +225,133 @@ I can access your fitness data to provide personalized advice. What would you li
 What specific area would you like to focus on? I'm ready to provide personalized advice based on your goals!`;
 };
 
-export async function sendChatMessage(message: string): Promise<string> {
+// Send a message to the AI chat service with streaming support
+export const sendChatMessage = async (
+  message: string, 
+  onChunk?: (chunk: string) => void,
+  onComplete?: (fullMessage: string) => void,
+  onError?: (error: string) => void
+): Promise<string> => {
+  console.log('Sending message to AI chat service')
+  
   try {
-    console.log('Sending message to AI chat service');
-    
-    // Get the current user's session to get the JWT token
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session?.access_token) {
-      console.error('No authenticated session found:', sessionError);
-      return "I need you to be logged in to provide personalized fitness advice. Please log in and try again.";
+    // Get user session for authentication
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      throw new Error('No active session found')
     }
 
-    // Get user ID from session
-    const userId = session.user.id;
-    
-    // Try the deployed edge function first
-    try {
-      console.log('Attempting to use deployed edge function');
-      const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ message } as ChatRequestBody),
-      });
+    // Call the edge function
+    const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ message })
+    })
 
-      if (response.ok) {
-        const data = await response.json() as ChatResponseBody;
-        
-        if (data && data.message) {
-          console.log('Successfully received response from deployed edge function');
-          return data.message;
-        }
-      } else {
-        const errorText = await response.text();
-        console.error("Error from deployed edge function:", errorText);
-        
-        // If the function is not deployed (404), use temporary response
-        if (response.status === 404) {
-          console.log('Edge function not found, using temporary AI response');
-          return await getTemporaryAIResponse(message, userId);
-        }
-        
-        // Handle authentication errors
-        if (response.status === 400 && errorText.includes('No user found')) {
-          console.log('Authentication error, using temporary AI response');
-          return await getTemporaryAIResponse(message, userId);
-        }
-        
-        // For other errors, use temporary response
-        console.log('Other error from edge function, using temporary AI response');
-        return await getTemporaryAIResponse(message, userId);
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Error from deployed edge function:', errorText)
+      
+      // Check for specific error types
+      if (response.status === 400 && errorText.includes('No user found')) {
+        const errorMessage = 'Authentication error. Please try logging in again.'
+        onError?.(errorMessage)
+        return errorMessage
       }
-    } catch (edgeFunctionError) {
-      console.error('Edge function error, falling back to temporary AI:', edgeFunctionError);
+      
+      if (response.status === 404) {
+        const errorMessage = 'AI service is currently being deployed. Please try again in a few minutes.'
+        onError?.(errorMessage)
+        return errorMessage
+      }
+      
+      const errorMessage = `Edge function error (${response.status}): ${errorText}`
+      onError?.(errorMessage)
+      return errorMessage
     }
+
+    // Check if response is streaming (SSE)
+    const contentType = response.headers.get('content-type')
+    if (contentType?.includes('text/event-stream')) {
+      console.log('Received streaming response from edge function')
+      
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No response body available')
+      }
+
+      const decoder = new TextDecoder()
+      let fullMessage = ''
+      let buffer = ''
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          
+          // Process complete lines
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || '' // Keep incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6) // Remove 'data: ' prefix
+              
+              if (data === '[DONE]') {
+                console.log('Stream completed')
+                onComplete?.(fullMessage)
+                return fullMessage
+              }
+              
+              try {
+                const parsed = JSON.parse(data)
+                if (parsed.choices?.[0]?.delta?.content) {
+                  const chunk = parsed.choices[0].delta.content
+                  fullMessage += chunk
+                  onChunk?.(chunk)
+                }
+              } catch (e) {
+                // Ignore parsing errors for non-JSON lines
+              }
+            }
+          }
+        }
+        
+        onComplete?.(fullMessage)
+        return fullMessage
+        
+      } finally {
+        reader.releaseLock()
+      }
+    } else {
+      // Fallback to JSON response (for non-streaming responses)
+      console.log('Received JSON response from edge function')
+      const data = await response.json()
+      
+      if (data.error) {
+        const errorMessage = `Error: ${data.error}`
+        onError?.(errorMessage)
+        return errorMessage
+      }
+      
+      const message = data.message || 'No response received'
+      onComplete?.(message)
+      return message
+    }
+
+  } catch (error) {
+    console.error('Error calling AI chat function:', error)
     
     // Fallback to temporary AI response
-    console.log('Using temporary AI response as fallback');
-    const response = await getTemporaryAIResponse(message, userId);
-    
-    console.log('Received response from temporary AI service');
-    return response;
-    
-  } catch (error) {
-    console.error('Error calling AI chat function:', error);
-    
-    // Check if it's a network/CORS error
-    if (error instanceof TypeError && error.message.includes('NetworkError')) {
-      return "I'm having trouble connecting to my AI service right now. This usually means the AI chat function needs to be deployed to Supabase. Please check the deployment status. Here's a quick fitness tip while we get this sorted: Remember to stay hydrated and get adequate sleep for optimal recovery!";
-    }
-    
-    // Return a fallback response
-    return "I'm sorry, I'm having trouble connecting to my AI service right now. Please try again in a moment. In the meantime, here's a fitness tip: Focus on compound movements like squats, deadlifts, and bench press for maximum efficiency.";
+    console.log('Authentication error, using temporary AI response')
+    const fallbackResponse = await getTemporaryAIResponse(message, 'fallback-user-id')
+    onComplete?.(fallbackResponse)
+    return fallbackResponse
   }
 }
