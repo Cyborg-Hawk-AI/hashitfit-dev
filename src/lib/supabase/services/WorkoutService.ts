@@ -858,4 +858,89 @@ export class WorkoutService {
       return null;
     }
   }
+
+  // Get all available exercises for swapping
+  static async getAllExercises(): Promise<{id: string, name: string}[]> {
+    try {
+      const { data, error } = await supabase
+        .from('exercises')
+        .select('id, name')
+        .order('name', { ascending: true });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching all exercises:', error);
+      return [];
+    }
+  }
+
+  // Swap an exercise in a workout plan
+  static async swapExercise(workoutPlanId: string, oldExerciseId: string, newExerciseName: string): Promise<boolean> {
+    try {
+      // Get the current exercise to preserve its settings
+      const { data: currentExercise, error: currentError } = await supabase
+        .from('workout_exercises')
+        .select('*')
+        .eq('id', oldExerciseId)
+        .eq('workout_plan_id', workoutPlanId)
+        .single();
+
+      if (currentError) throw currentError;
+
+      // Update the exercise with the new name while preserving other settings
+      const { error: updateError } = await supabase
+        .from('workout_exercises')
+        .update({
+          name: newExerciseName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', oldExerciseId)
+        .eq('workout_plan_id', workoutPlanId);
+
+      if (updateError) throw updateError;
+      return true;
+    } catch (error) {
+      console.error('Error swapping exercise:', error);
+      return false;
+    }
+  }
+
+  // Get user exercise notes
+  static async getUserExerciseNotes(userId: string, exerciseId: string): Promise<string | null> {
+    try {
+      const { data, error } = await supabase
+        .from('user_exercise_notes')
+        .select('notes')
+        .eq('user_id', userId)
+        .eq('workout_exercise_id', exerciseId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows found
+      return data?.notes || null;
+    } catch (error) {
+      console.error('Error fetching user exercise notes:', error);
+      return null;
+    }
+  }
+
+  // Save user exercise notes
+  static async saveUserExerciseNotes(userId: string, exerciseId: string, notes: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('user_exercise_notes')
+        .upsert({
+          user_id: userId,
+          workout_exercise_id: exerciseId,
+          notes: notes,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error saving user exercise notes:', error);
+      return false;
+    }
+  }
 }

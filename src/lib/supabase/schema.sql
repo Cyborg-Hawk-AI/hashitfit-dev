@@ -147,6 +147,22 @@ CREATE TABLE IF NOT EXISTS workout_exercises (
 -- Create indexes on workout_exercises
 CREATE INDEX idx_workout_exercises_workout_plan_id ON workout_exercises(workout_plan_id);
 
+-- USER EXERCISE NOTES TABLE
+-- User-specific notes for individual exercises
+CREATE TABLE IF NOT EXISTS user_exercise_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  workout_exercise_id UUID REFERENCES workout_exercises(id) ON DELETE CASCADE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(user_id, workout_exercise_id)
+);
+
+-- Create indexes on user_exercise_notes
+CREATE INDEX idx_user_exercise_notes_user_id ON user_exercise_notes(user_id);
+CREATE INDEX idx_user_exercise_notes_exercise_id ON user_exercise_notes(workout_exercise_id);
+
 -- WORKOUT LOGS TABLE
 -- Records completed workouts
 CREATE TABLE IF NOT EXISTS workout_logs (
@@ -376,6 +392,7 @@ ALTER TABLE meal_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_recommendations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_exercise_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assessment_data ENABLE ROW LEVEL SECURITY;
 
 -- Create Row Level Security Policies
@@ -661,6 +678,23 @@ CREATE POLICY "Users can update own recommendations"
   ON user_recommendations FOR UPDATE 
   USING (auth.uid() = user_id);
 
+-- User Exercise Notes Policies
+CREATE POLICY "Users can view their own exercise notes" 
+  ON user_exercise_notes FOR SELECT 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own exercise notes" 
+  ON user_exercise_notes FOR INSERT 
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own exercise notes" 
+  ON user_exercise_notes FOR UPDATE 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own exercise notes" 
+  ON user_exercise_notes FOR DELETE 
+  USING (auth.uid() = user_id);
+
 -- Create trigger functions for updated_at timestamps
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
@@ -733,6 +767,10 @@ CREATE TRIGGER update_assessment_data_modtime
 
 CREATE TRIGGER update_user_recommendations_modtime
   BEFORE UPDATE ON user_recommendations
+  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_user_exercise_notes_modtime
+  BEFORE UPDATE ON user_exercise_notes
   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 -- Create function to create user profile on signup

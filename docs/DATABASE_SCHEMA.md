@@ -181,6 +181,29 @@ CREATE TABLE workout_exercises (
 
 ---
 
+### `user_exercise_notes`
+User-specific notes for individual exercises.
+
+```sql
+CREATE TABLE user_exercise_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  workout_exercise_id UUID REFERENCES workout_exercises(id) ON DELETE CASCADE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(user_id, workout_exercise_id)
+);
+```
+
+#### Design Features
+- **User Privacy**: Each user can only see their own exercise notes
+- **Exercise Association**: Notes linked to specific exercises in workout plans
+- **Unique Constraint**: One note per user per exercise
+- **Cascade Deletion**: Notes deleted when user or exercise is removed
+
+---
+
 ### `workout_logs`
 Records of completed workout sessions.
 
@@ -608,6 +631,26 @@ CREATE POLICY "Users can view own exercise logs"
     SELECT user_id FROM workout_logs 
     WHERE workout_logs.id = exercise_logs.workout_log_id
   ));
+```
+
+#### User Exercise Notes Access
+```sql
+-- User exercise notes are user-specific and private
+CREATE POLICY "Users can view their own exercise notes" 
+  ON user_exercise_notes FOR SELECT 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own exercise notes" 
+  ON user_exercise_notes FOR INSERT 
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own exercise notes" 
+  ON user_exercise_notes FOR UPDATE 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own exercise notes" 
+  ON user_exercise_notes FOR DELETE 
+  USING (auth.uid() = user_id);
 ```
 
 ---

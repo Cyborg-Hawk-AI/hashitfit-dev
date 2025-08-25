@@ -63,9 +63,9 @@ export default function PlannerPage() {
   };
   
   const [workoutDistribution, setWorkoutDistribution] = useState({
-    upper: 2,
-    lower: 1,
-    cardio: 1,
+    upper: 0,
+    lower: 0,
+    cardio: 0,
     recovery: 0
   });
   
@@ -82,6 +82,122 @@ export default function PlannerPage() {
 
   const [weeklyTheme, setWeeklyTheme] = useState<string>('Consistency');
   const [momentumState, setMomentumState] = useState<'up' | 'steady' | 'down'>('up');
+
+  // Calculate workout distribution from current week's scheduled workouts
+  const calculateWorkoutDistribution = async () => {
+    if (!userId) return;
+
+    try {
+      const today = new Date();
+      // Change to Sunday to Saturday week (weekStartsOn: 0)
+      const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 0 });
+      const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 0 });
+
+      console.log('🔄 Calculating workout distribution for week:');
+      console.log('📅 Today:', format(today, 'yyyy-MM-dd'));
+      console.log('📅 Week start (Sunday):', format(startOfCurrentWeek, 'yyyy-MM-dd'));
+      console.log('📅 Week end (Saturday):', format(endOfCurrentWeek, 'yyyy-MM-dd'));
+
+      // Get current week's scheduled workouts
+      const { data: scheduledWorkouts, error } = await supabase
+        .from('workout_schedule')
+        .select(`
+          *,
+          workout_plans(
+            id,
+            title,
+            category,
+            target_muscles
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('scheduled_date', format(startOfCurrentWeek, 'yyyy-MM-dd'))
+        .lte('scheduled_date', format(endOfCurrentWeek, 'yyyy-MM-dd'))
+        .order('scheduled_date', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching scheduled workouts:', error);
+        return;
+      }
+
+      console.log('📋 Found scheduled workouts:', scheduledWorkouts?.length || 0);
+      console.log('📋 Raw scheduled workouts:', scheduledWorkouts);
+
+      // Initialize category counts
+      const categoryCounts = {
+        upper: 0,
+        lower: 0,
+        cardio: 0,
+        recovery: 0
+      };
+
+      // Count workouts by category
+      scheduledWorkouts?.forEach((scheduledWorkout) => {
+        console.log('🏋️ Processing scheduled workout:', scheduledWorkout);
+        const workoutPlan = scheduledWorkout.workout_plans;
+        if (workoutPlan) {
+          console.log('📋 Workout plan:', workoutPlan);
+          const category = workoutPlan.category?.toLowerCase();
+          console.log('🏷️ Category:', category);
+          if (category) {
+            // Map workout categories to our distribution categories
+            if (category.includes('strength')) {
+              // Check target muscles to determine if it's upper or lower body
+              const targetMuscles = workoutPlan.target_muscles || [];
+              const muscleGroups = targetMuscles.map(m => m.toLowerCase());
+              const workoutTitle = workoutPlan.title?.toLowerCase() || '';
+              console.log('💪 Target muscles:', targetMuscles);
+              console.log('💪 Muscle groups (lowercase):', muscleGroups);
+              console.log('📝 Workout title:', workoutTitle);
+              
+              // First try to categorize by target muscles
+              if (muscleGroups.some(m => m.includes('leg') || m.includes('glute') || m.includes('quad') || m.includes('hamstring') || m.includes('calf'))) {
+                console.log('🦵 Categorized as LOWER BODY (by target muscles)');
+                categoryCounts.lower++;
+              } else if (muscleGroups.some(m => m.includes('chest') || m.includes('back') || m.includes('shoulder') || m.includes('arm') || m.includes('bicep') || m.includes('tricep'))) {
+                console.log('💪 Categorized as UPPER BODY (by target muscles)');
+                categoryCounts.upper++;
+              } else {
+                // Fallback: categorize by workout title when target_muscles is empty
+                if (workoutTitle.includes('lower') || workoutTitle.includes('leg') || workoutTitle.includes('squat') || workoutTitle.includes('deadlift')) {
+                  console.log('🦵 Categorized as LOWER BODY (by title)');
+                  categoryCounts.lower++;
+                } else if (workoutTitle.includes('upper') || workoutTitle.includes('push') || workoutTitle.includes('pull') || workoutTitle.includes('chest') || workoutTitle.includes('back') || workoutTitle.includes('shoulder') || workoutTitle.includes('arm')) {
+                  console.log('💪 Categorized as UPPER BODY (by title)');
+                  categoryCounts.upper++;
+                } else if (workoutTitle.includes('full') || workoutTitle.includes('total')) {
+                  // Split full body workouts between upper and lower
+                  console.log('💪 Categorized as UPPER BODY (full body default)');
+                  categoryCounts.upper++;
+                } else {
+                  // Default to upper body for general strength workouts
+                  console.log('💪 Categorized as UPPER BODY (default)');
+                  categoryCounts.upper++;
+                }
+              }
+            } else if (category.includes('cardio') || category.includes('hiit') || category.includes('endurance')) {
+              console.log('🏃 Categorized as CARDIO');
+              categoryCounts.cardio++;
+            } else if (category.includes('recovery') || category.includes('flexibility') || category.includes('yoga')) {
+              console.log('🧘 Categorized as RECOVERY');
+              categoryCounts.recovery++;
+            } else {
+              // Default to upper body for unknown categories
+              console.log('💪 Categorized as UPPER BODY (unknown category)');
+              categoryCounts.upper++;
+            }
+          }
+        }
+      });
+
+      // Update the workout distribution state
+      setWorkoutDistribution(categoryCounts);
+      console.log('Updated workout distribution:', categoryCounts);
+
+    } catch (error) {
+      console.error('Error calculating workout distribution:', error);
+    }
+  };
 
   // Data collection for AI optimization
   const collectOptimizationData = async (userId: string) => {
@@ -427,25 +543,78 @@ export default function PlannerPage() {
     
     setWeekData(processedWeekData);
     
-    // Calculate weekly stats
+    // Calculate weekly stats with real data
     const completedWorkouts = weeklySchedules.filter(s => s.is_completed).length;
     const totalScheduled = weeklySchedules.length;
     const nutritionDays = weeklyNutritionSummary.length;
     
+    // Calculate average calories and protein from nutrition data
+    const totalCalories = weeklyNutritionSummary.reduce((sum, day) => sum + (day.total_calories || 0), 0);
+    const totalProtein = weeklyNutritionSummary.reduce((sum, day) => sum + (day.total_protein_g || 0), 0);
+    const avgCalories = nutritionDays > 0 ? Math.round(totalCalories / nutritionDays) : 0;
+    const avgProtein = nutritionDays > 0 ? Math.round(totalProtein / nutritionDays) : 0;
+    
+    // Calculate calorie balance (assuming 2000 cal target)
+    const calorieTarget = 2000;
+    const calorieBalance = avgCalories - calorieTarget;
+    
+    // Determine momentum state based on data
+    let momentumState: 'up' | 'steady' | 'down' = 'steady';
+    if (completedWorkouts >= 4 && avgCalories >= calorieTarget) {
+      momentumState = 'up';
+    } else if (completedWorkouts < 2 || avgCalories < calorieTarget * 0.8) {
+      momentumState = 'down';
+    }
+    
+    // Generate coach message based on performance
+    let coachMessage = "Great job this week! Keep up the consistency.";
+    if (momentumState === 'down') {
+      if (completedWorkouts < 2) {
+        coachMessage = "You've missed some workouts this week. Let's get back on track with a solid plan for next week.";
+      } else if (avgCalories < calorieTarget * 0.8) {
+        coachMessage = "Your nutrition slipped this week. Let's aim for 3 of 4 meals tomorrow.";
+      } else {
+        coachMessage = "Let's focus on consistency next week. Small steps lead to big results!";
+      }
+    } else if (momentumState === 'up') {
+      coachMessage = "Excellent week! You're building great momentum. Keep this energy going!";
+    }
+    
     setWeeklyStats({
       workoutCompletion: totalScheduled > 0 ? Math.round((completedWorkouts / totalScheduled) * 100) : 0,
       nutritionCompliance: Math.round((nutritionDays / 7) * 100),
-      habitsCompleted: 12, // Mock data
-      totalHabits: 21, // Mock data
-      progressTrend: 'up',
+      habitsCompleted: 0, // No real habit tracking yet
+      totalHabits: 0, // No real habit tracking yet
+      progressTrend: momentumState,
+      coachMessage: coachMessage,
       weeklyGoals: {
         workouts: { completed: completedWorkouts, target: 4 },
-        calories: { avg: 1800, target: 2000 },
-        protein: { avg: 120, target: 150 }
+        calories: { avg: avgCalories, target: calorieTarget },
+        protein: { avg: avgProtein, target: 150 }
       }
     });
     
+    // Update weekly goals with real data
+    setWeeklyGoals([
+      { type: 'workouts' as const, label: 'Workouts', current: completedWorkouts, target: 4 },
+      { type: 'protein' as const, label: 'Protein Goal', current: avgProtein, target: 120, unit: 'g/day' },
+      { type: 'calories' as const, label: 'Daily Calories', current: avgCalories, target: calorieTarget, unit: 'cal/day' }
+    ]);
+    
+    // Update momentum state
+    setMomentumState(momentumState);
+    
   }, [userId, weeklySchedules, weeklyNutritionSummary, weekStart]);
+
+  // Calculate workout distribution when weekly schedules change
+  useEffect(() => {
+    console.log('🔄 useEffect triggered for workout distribution calculation');
+    console.log('👤 User ID:', userId);
+    console.log('📅 Weekly schedules count:', weeklySchedules?.length || 0);
+    if (userId && weeklySchedules) {
+      calculateWorkoutDistribution();
+    }
+  }, [userId, weeklySchedules]);
   
   // Load selected day data
   useEffect(() => {
@@ -539,16 +708,12 @@ export default function PlannerPage() {
         console.log('🏋️ Final primary workout:', primaryWorkout);
         console.log('🏋️ Final secondary workouts:', secondaryWorkouts);
         
-        // Load meals for the day
-        const mealLogs = await NutritionService.getMealLogsForDate(userId, dateStr);
+        // Load meals for the day - use same method as Dashboard for consistency
+        const mealLogs = await NutritionService.getNutritionLogsByDate(userId, dateStr);
         console.log('🍽️ Meal logs for date:', mealLogs);
         
-        // Mock habits data
-        const habits = [
-          { id: '1', name: 'Water Intake', isCompleted: true, target: 8, current: 6, unit: 'glasses' },
-          { id: '2', name: 'Sleep 8 hours', isCompleted: false },
-          { id: '3', name: 'Take Vitamins', isCompleted: true },
-        ];
+        // Habits data removed - using mock data
+        const habits = [];
         
         const finalDayData = {
           workout: primaryWorkout,
@@ -1059,10 +1224,10 @@ export default function PlannerPage() {
         {/* Prescriptive Weekly Summary */}
         {weeklyStats && (
           <PrescriptiveWeeklySummary
-            coachMessage="Your nutrition slipped this week. Let's aim for 3 of 4 meals tomorrow."
+            coachMessage={weeklyStats.coachMessage || "Great job this week! Keep up the consistency."}
             weeklyGoals={weeklyGoals}
-            mostConsistentHabit="Water Intake"
-            calorieBalance={-200}
+            mostConsistentHabit="Workout Consistency"
+            calorieBalance={weeklyStats.weeklyGoals?.calories?.avg - 2000 || 0}
             momentumState={momentumState}
             weeklyTheme={weeklyTheme}
             onUpdateGoal={handleUpdateGoal}

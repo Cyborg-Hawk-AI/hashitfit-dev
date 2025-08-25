@@ -22,7 +22,7 @@ interface CompactExerciseCardProps {
   isNext?: boolean;
   onToggleComplete: (exerciseId: string) => void;
   onSwap?: (exerciseId: string) => void;
-  onFormTips?: (exerciseName: string) => void;
+  onNotes?: (exerciseId: string, exerciseName: string) => void;
   className?: string;
 }
 
@@ -32,7 +32,7 @@ export function CompactExerciseCard({
   isNext = false,
   onToggleComplete,
   onSwap,
-  onFormTips,
+  onNotes,
   className
 }: CompactExerciseCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -192,6 +192,7 @@ export function CompactExerciseCard({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
+                      console.log('🔄 Swap button clicked in CompactExerciseCard:', exercise.id);
                       onSwap(exercise.id);
                     }}
                     className="text-slate-600 hover:text-violet-700 hover:bg-violet-100 text-xs px-3 py-2 h-8 min-h-[44px] md:min-h-0 md:h-8"
@@ -201,25 +202,13 @@ export function CompactExerciseCard({
                   </Button>
                 )}
                 
-                {onFormTips && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onFormTips(exercise.name);
-                    }}
-                    className="text-slate-600 hover:text-violet-700 hover:bg-violet-100 text-xs px-3 py-2 h-8 min-h-[44px] md:min-h-0 md:h-8"
-                  >
-                    <Info size={14} className="mr-1" />
-                    ▶ Form Tips
-                  </Button>
-                )}
-
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNotes?.(exercise.id, exercise.name);
+                  }}
                   className="text-slate-600 hover:text-violet-700 hover:bg-violet-100 text-xs px-3 py-2 h-8 min-h-[44px] md:min-h-0 md:h-8"
                 >
                   📝 Notes

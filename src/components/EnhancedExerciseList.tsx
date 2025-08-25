@@ -19,12 +19,16 @@ interface Exercise {
 interface EnhancedExerciseListProps {
   exercises: Exercise[];
   onExerciseToggle?: (exerciseId: string) => void;
+  onSwap?: (exerciseId: string) => void;
+  onNotes?: (exerciseId: string, exerciseName: string) => void;
   className?: string;
 }
 
 export function EnhancedExerciseList({ 
   exercises, 
   onExerciseToggle,
+  onSwap,
+  onNotes,
   className 
 }: EnhancedExerciseListProps) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
@@ -46,14 +50,12 @@ export function EnhancedExerciseList({
 
   const handleSwapExercise = (exerciseId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    console.log('Swap exercise:', exerciseId);
-    // TODO: Implement exercise swap functionality
+    onSwap?.(exerciseId);
   };
 
-  const handleFormGuide = (exerciseName: string, event: React.MouseEvent) => {
+  const handleNotes = (exerciseId: string, exerciseName: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    console.log('Show form guide for:', exerciseName);
-    // TODO: Implement form guide modal
+    onNotes?.(exerciseId, exerciseName);
   };
 
   const handleMarkComplete = (exerciseId: string, event: React.MouseEvent) => {
@@ -278,22 +280,21 @@ export function EnhancedExerciseList({
                         <TooltipContent>
                           <p>Replace with alternative exercise</p>
                         </TooltipContent>
-                      </Tooltip>
+                                            </Tooltip>
 
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={(e) => handleFormGuide(exercise.name, e)}
+                            onClick={(e) => handleNotes(exercise.id, exercise.name, e)}
                             className="h-10 px-4 text-xs text-slate-600 hover:text-violet-700 hover:bg-violet-100 rounded-xl transition-all duration-200 border border-transparent hover:border-violet-200"
                           >
-                            <Info size={14} className="mr-2" />
-                            Form Tips
+                            📝 Notes
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>View exercise demonstration and tips</p>
+                          <p>Add personal notes for this exercise</p>
                         </TooltipContent>
                       </Tooltip>
                     </div>

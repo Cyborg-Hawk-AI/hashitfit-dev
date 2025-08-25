@@ -76,6 +76,8 @@ interface WorkoutSessionCardProps {
   onComplete?: () => void;
   onSaveAsFavorite?: () => void;
   onStartRestTimer?: (duration: number) => void;
+  onSwap?: (exerciseId: string) => void;
+  onNotes?: (exerciseId: string, exerciseName: string) => void;
   className?: string;
 }
 
@@ -84,6 +86,8 @@ export function EnhancedWorkoutSessionCard({
   onComplete, 
   onSaveAsFavorite,
   onStartRestTimer,
+  onSwap,
+  onNotes,
   className 
 }: WorkoutSessionCardProps) {
   const [currentExercise, setCurrentExercise] = useState(0);

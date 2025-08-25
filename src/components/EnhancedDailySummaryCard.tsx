@@ -332,9 +332,9 @@ export function EnhancedDailySummaryCard({
             )}
           </div>
 
-          <Separator />
+          {/* Habits Section - Hidden (using mock data) */}
+          {/* <Separator />
 
-          {/* Habits Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 dark:text-white flex items-center space-x-2">
@@ -383,7 +383,7 @@ export function EnhancedDailySummaryCard({
             </div>
           </div>
 
-          <Separator />
+          <Separator /> */}
 
           {/* Quick Actions */}
           <div className="flex gap-2">

@@ -17,6 +17,8 @@ import { CompactExerciseCard } from "@/components/CompactExerciseCard";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { StickyFooterBar } from "@/components/StickyFooterBar";
 import { EnhancedWorkoutSessionCard } from "@/components/EnhancedWorkoutSessionCard";
+import { SwapExerciseModal } from "@/components/SwapExerciseModal";
+import { ExerciseNotesModal } from "@/components/ExerciseNotesModal";
 import { Plus, MessageCircle, Calendar, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { WorkoutService } from "@/lib/supabase/services/WorkoutService";
@@ -31,6 +33,10 @@ export default function WorkoutsPage() {
   const [showAddWorkout, setShowAddWorkout] = useState(false);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [restDuration, setRestDuration] = useState(60);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [selectedExerciseForSwap, setSelectedExerciseForSwap] = useState<{id: string, name: string} | null>(null);
+  const [selectedExerciseForNotes, setSelectedExerciseForNotes] = useState<{id: string, name: string} | null>(null);
   const { isAuthenticated, userId } = useAuth();
   const queryClient = useQueryClient();
   
@@ -456,13 +462,54 @@ export default function WorkoutsPage() {
   };
 
   const handleSwapExercise = (exerciseId: string) => {
-    console.log('Swap exercise:', exerciseId);
-    // TODO: Implement exercise swap functionality
+    const exercise = selectedWorkout?.exercises.find((ex: any) => ex.id === exerciseId);
+    if (exercise) {
+      setSelectedExerciseForSwap({ id: exerciseId, name: exercise.name });
+      setShowSwapModal(true);
+    }
   };
 
-  const handleFormGuide = (exerciseName: string) => {
-    console.log('Show form guide for:', exerciseName);
-    // TODO: Implement form guide modal
+  const handleSwapExerciseInList = (exerciseId: string, workoutId: string, exerciseName: string) => {
+    console.log('🔄 Swap button clicked:', { exerciseId, workoutId, exerciseName });
+    setSelectedExerciseForSwap({ id: exerciseId, name: exerciseName });
+    setSelectedWorkout({ id: workoutId } as any); // Set minimal workout info for swap
+    setShowSwapModal(true);
+    console.log('✅ Modal should be opening now');
+  };
+
+  const handleNotes = (exerciseId: string, exerciseName: string) => {
+    setSelectedExerciseForNotes({ id: exerciseId, name: exerciseName });
+    setShowNotesModal(true);
+  };
+
+  const handleSwapConfirm = async (newExerciseName: string) => {
+    if (!selectedExerciseForSwap || !selectedWorkout) return;
+    
+    try {
+      const success = await WorkoutService.swapExercise(
+        selectedWorkout.id,
+        selectedExerciseForSwap.id,
+        newExerciseName
+      );
+      
+      if (success) {
+        toast({
+          title: "Success",
+          description: "Exercise swapped successfully!",
+        });
+        // Refresh the workout data
+        queryClient.invalidateQueries({ queryKey: ['scheduledWorkouts', userId, format(selectedDate, 'yyyy-MM-dd')] });
+      } else {
+        throw new Error('Failed to swap exercise');
+      }
+    } catch (error) {
+      console.error('Error swapping exercise:', error);
+      toast({
+        title: "Error",
+        description: "Failed to swap exercise. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Completion view
@@ -547,6 +594,8 @@ export default function WorkoutsPage() {
               onComplete={completeWorkout}
               onSaveAsFavorite={saveAsFavorite}
               onStartRestTimer={startRestTimer}
+              onSwap={handleSwapExercise}
+              onNotes={handleNotes}
               className="animate-fade-in"
             />
           </div>
@@ -654,8 +703,8 @@ export default function WorkoutsPage() {
                               exerciseNumber={index + 1}
                               isNext={isNext}
                               onToggleComplete={handleExerciseToggle}
-                              onSwap={handleSwapExercise}
-                              onFormTips={handleFormGuide}
+                              onSwap={(exerciseId) => handleSwapExerciseInList(exerciseId, workout.id, exercise.name)}
+                              onNotes={handleNotes}
                             />
                           );
                         })}
@@ -762,6 +811,22 @@ export default function WorkoutsPage() {
         }}
         selectedDay={format(selectedDate, 'yyyy-MM-dd')}
         availableWorkouts={allWorkoutPlans}
+      />
+
+      {/* Swap Exercise Modal */}
+      <SwapExerciseModal
+        isOpen={showSwapModal}
+        onClose={() => setShowSwapModal(false)}
+        onSwap={handleSwapConfirm}
+        currentExerciseName={selectedExerciseForSwap?.name || ''}
+      />
+
+      {/* Exercise Notes Modal */}
+      <ExerciseNotesModal
+        isOpen={showNotesModal}
+        onClose={() => setShowNotesModal(false)}
+        exerciseId={selectedExerciseForNotes?.id || ''}
+        exerciseName={selectedExerciseForNotes?.name || ''}
       />
       
       <NavigationBar />
