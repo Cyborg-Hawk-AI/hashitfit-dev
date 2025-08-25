@@ -1,0 +1,255 @@
+Here’s a practical, end-to-end blueprint for building a **ChatGPT-style chatbot with automatic, contextual answers** on Supabase — i.e., a RAG-ish assistant that can answer things like “am I too skinny or fat?” by **retrieving the right user data first**, then responding with streaming output.
+
+I’ll keep it general (no hard-coded table names) and lean on **OpenAI’s Responses API** for fast streaming + tool calling, **Supabase** for storage, **pgvector** for semantic retrieval, and **strict RLS** for privacy. Where useful, I reference authoritative docs.
+
+---
+
+# 1) Architecture at a glance (framework-agnostic)
+
+* **Client/UI**: Opens an SSE connection to your Supabase Edge Function for token-by-token streaming (ChatGPT-like feel). ([MDN Web Docs][1])
+* **Edge Function (Deno)**: Proxies the request to **OpenAI `/v1/responses` with `stream: true`**, relays SSE chunks back, and executes any **tool calls** by hitting Supabase (for data) or Postgres (for vector search). ([OpenAI][2])
+* **Supabase (Postgres + pgvector)**:
+
+  * **Messages/Memories** (long-term facts, summaries, preferences).
+  * **Documents** (knowledge chunks) with embeddings for **semantic retrieval** (RAG).
+  * **Data-Source Registry**: describes how to query domain data (generic fitness metrics, etc.) **without hard-coding schemas**. ([Supabase][3])
+
+---
+
+# 2) Core data model (generic + RLS-friendly)
+
+Keep it **schema-agnostic** and safe:
+
+* `messages` — chat history for short-term context (threaded).
+* `memories` — durable user facts/preferences/summaries (with embeddings).
+* `documents` — RAG chunks (with embeddings).
+* `data_sources` — registry describing **how** to query your Supabase views/tables (whitelisted columns, filters), so the assistant can fetch user metrics **without assuming table names**.
+* Enable **pgvector** and build **IVFFLAT** indexes for fast similarity search, per Supabase’s semantic search guide. ([Supabase][3])
+
+> Supabase docs show enabling `pgvector`, creating embedding columns, and doing similarity search (cosine) directly in Postgres. ([Supabase][3])
+
+**Why RLS matters:** Gate every read/write by `auth.uid()` so cross-user leakage is impossible. Supabase Edge Functions + RLS is the standard setup. ([Supabase][4])
+
+---
+
+# 3) Retrieval strategy (RAG + structured data)
+
+Use **two retrieval modes**:
+
+1. **Vector search (unstructured)** for notes, plans, long text (via `documents` / `memories` embeddings). ([Supabase][3])
+2. **Direct SQL (structured)** for numeric facts (weight/height/latest measurement), via a **Data-Source Adapter** that reads the per-source config in `data_sources` and builds safe queries (only whitelisted columns/filters). This avoids brittle, model-invented SQL.
+
+Supabase’s AI guides + “AI & Vectors” landing cover the approach and tooling. ([Supabase][5])
+
+---
+
+# 4) Inference layer: OpenAI **Responses API** (streaming + tools)
+
+Prefer **Responses API**: **one endpoint** (`POST /v1/responses`) with **`stream: true`**, first token in \~sub-second if your edge function streams correctly. Docs include event sequencing and examples. ([OpenAI][2])
+
+### a) Required tools (contracts, not code)
+
+Define tools once; the model calls them deterministically when it needs data:
+
+* `search_memory(query, k)` → returns top-K memory snippets (embedding search).
+* `get_user_data(query, time_range?, source_keys?, limit?)` → reads from registered sources (generic).
+* `write_memory(kind, content, importance?)` → store new durable memory.
+
+> In Responses API, each tool is declared as a **function tool**:
+> `{ "type": "function", "function": { "name": "...", "description": "...", "parameters": { ... JSON Schema ... }}}`. ([OpenAI][6])
+
+### b) Structured outputs (optional but powerful)
+
+If you want the model to return strict JSON (e.g., a small decision object before rendering), use **structured outputs** (JSON Schema) — fully supported by Responses. ([OpenAI][2])
+
+### c) Streaming through Edge Functions (SSE)
+
+* In your Edge Function, **return OpenAI’s streamed body directly** with `Content-Type: text/event-stream`.
+* Or, wrap in a `ReadableStream` and `enqueue` chunks (also OK) — **don’t** buffer.
+* MDN & WHATWG specify the SSE framing; Supabase’s Edge Functions guide shows how to shape responses. ([MDN Web Docs][1], [HTML Living Standard][7], [Supabase][4])
+
+---
+
+# 5) “Auto-context” flow for: *“Am I too skinny or fat?”*
+
+This is a **user-specific classification** → needs **structured data first**.
+
+**Assistant behavior (deterministic):**
+
+1. Detect intent: body status inquiry → **call `get_user_data`** for latest height & weight from your registry (do **not** assume column names; the adapter maps keys → tables/views).
+2. If found, compute **BMI** and map to standard adult categories (CDC):
+
+   * Underweight: < 18.5
+   * Healthy weight: 18.5–<25
+   * Overweight: 25–<30
+   * Obesity: ≥ 30
+     (obesity classes 1/2/3 available if you want granularity). ([CDC][8])
+3. Stream the answer: give the category + **gentle disclaimer** (BMI is a screening tool, not a diagnosis) and suggest speaking with a clinician for medical advice. ([CDC][9])
+4. If missing height or weight, ask **one concise follow-up** (or use last known values while clearly stating the date).
+
+This pattern generalizes: **classify → fetch → compute → answer**, with retrieval happening early so tokens can start flowing while data is fetched (the assistant can add an “update” once numbers arrive).
+
+---
+
+# 6) Supabase Edge Function (SSE proxy) — minimal, robust pattern
+
+* **Do this:** pass upstream SSE body directly.
+* **Don’t do this:** buffer to string / misuse `WritableStream.getWriter()` — that breaks streaming.
+
+OpenAI Responses API + streaming guide (events) + SSE spec/MDN back this approach. ([OpenAI][10], [MDN Web Docs][11])
+
+---
+
+# 7) Minimal contracts (copy & adapt)
+
+### Tool declaration (Responses API)
+
+```json
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_user_data",
+        "description": "Fetch rows from registered data sources (schema-agnostic).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "time_range": {
+              "type": "object",
+              "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" }
+              }
+            },
+            "source_keys": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "search_memory",
+        "description": "Vector search over durable user memories.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "k": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5 }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "write_memory",
+        "description": "Persist new durable memory.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "enum": ["fact","preference","summary","note"] },
+            "content": { "type": "string" },
+            "importance": { "type": "integer", "minimum": 1, "maximum": 5, "default": 1 }
+          },
+          "required": ["kind","content"]
+        }
+      }
+    }
+  ]
+}
+```
+
+(Shape matches OpenAI’s function-tool spec for the **Responses API**.) ([OpenAI][6])
+
+### Data-source registry (generic idea)
+
+```json
+{
+  "key": "biometrics_view",
+  "user_scoped": true,
+  "config": {
+    "table": "biometrics_view",
+    "columns": ["user_id","metric","value","unit","recorded_at"],
+    "order_by": "recorded_at desc"
+  }
+}
+```
+
+Your adapter enforces `user_id = auth.uid()` if `user_scoped` is true and selects only allowed columns. Supabase’s semantic search/AI docs show how to combine pgvector + Postgres safely. ([Supabase][5])
+
+---
+
+# 8) Prompt & policy (keep it lean)
+
+**System behaviors (examples):**
+
+* *“Always stream early; call tools early when you need data. If data arrives mid-answer, refine briefly.”* ([OpenAI][10])
+* *“Use `get_user_data` for personal metrics; don’t invent values.”*
+* *“Use `search_memory` for preferences/summaries; write new facts via `write_memory`.”*
+* *“Use CDC’s adult BMI categories for classification; note BMI is a screening tool.”* ([CDC][8])
+
+Keep your **system prompt short** so tokens go to answers, not boilerplate.
+
+---
+
+# 9) Testing scenarios (what “done” looks like)
+
+* **Latency**: p95 TTFB < 500ms on short prompts (verify via DevTools). **OpenAI Responses** streaming produces incremental events; if your function is truly streaming, you’ll see chunks arrive quickly. ([OpenAI][10])
+* **Happy path**: “Am I too skinny or fat?” → tool call → BMI category + date of measurements + brief disclaimer. CDC ranges match. ([CDC][8])
+* **No data**: Missing height → assistant asks **one** follow-up (or uses last known values with date).
+* **RAG**: “What did I set as my training goal?” → `search_memory` → answer cites stored preference.
+* **Security**: Attempts to read another user’s data fail under RLS. Supabase Edge Functions doc covers setup with Deno + auth context. ([Supabase][4])
+
+---
+
+# 10) Common pitfalls (and fixes)
+
+* **Using Assistants v1 / missing beta header** → switch to **Responses API** (no `OpenAI-Beta` needed). ([OpenAI][2])
+* **Broken tool schema** → each tool must be `{ type: "function", function: { name, description, parameters(JSON Schema) } }`. ([OpenAI][6])
+* **No streaming** → you buffered the upstream; return the **ReadableStream** body and set SSE headers. ([MDN Web Docs][1])
+* **RAG everywhere** → use vector search for text, **direct SQL for numbers** (weight/height), via your data-source adapter (faster & cheaper). Supabase’s semantic search and vector docs outline when embeddings make sense. ([Supabase][3])
+
+---
+
+## Copy-ready checklists
+
+**Edge Function (behavioral):**
+
+* Accept `{ input, tools?, response_format? }`.
+* `fetch('https://api.openai.com/v1/responses', { stream: true })`.
+* Return **SSE**: `Content-Type: text/event-stream; charset=utf-8`, no buffering, optional `: ping` keepalives. ([OpenAI][10], [MDN Web Docs][11])
+
+**Supabase (DB):**
+
+* Enable `pgvector`, add vector cols + IVFFLAT indexes for `documents`/`memories`. ([Supabase][3])
+* Create `data_sources` with whitelists; enforce RLS on user-scoped reads. ([Supabase][4])
+
+**Assistant (policy):**
+
+* Short system prompt; tool early; refine late.
+* CDC BMI categories; BMI is screening only. ([CDC][8])
+
+---
+
+If you want, I can adapt this into a **single Cursor prompt** that tells it only the **contracts and behaviors** (no app-specifics) so it scaffolds your Edge Function + tool handlers + Supabase pieces exactly in this style.
+
+[1]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events?utm_source=chatgpt.com "Using server-sent events - MDN - Mozilla"
+[2]: https://platform.openai.com/docs/api-reference/introduction?utm_source=chatgpt.com "API Reference - OpenAI API"
+[3]: https://supabase.com/docs/guides/ai/semantic-search?utm_source=chatgpt.com "Semantic search | Supabase Docs"
+[4]: https://supabase.com/docs/guides/functions?utm_source=chatgpt.com "Edge Functions | Supabase Docs"
+[5]: https://supabase.com/docs/guides/ai?utm_source=chatgpt.com "AI & Vectors | Supabase Docs"
+[6]: https://platform.openai.com/docs/guides/function-calling?api-mode=responses&utm_source=chatgpt.com "OpenAI's function-calling API"
+[7]: https://html.spec.whatwg.org/multipage/server-sent-events.html?utm_source=chatgpt.com "9.2 Server-sent events - HTML Standard - WhatWG"
+[8]: https://www.cdc.gov/bmi/adult-calculator/bmi-categories.html?utm_source=chatgpt.com "Adult BMI Categories"
+[9]: https://www.cdc.gov/bmi/about/index.html?utm_source=chatgpt.com "About Body Mass Index (BMI)"
+[10]: https://platform.openai.com/docs/guides/streaming-responses?api-mode=responses&utm_source=chatgpt.com "streaming API responses"
+[11]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events?utm_source=chatgpt.com "Server-sent events - MDN - Mozilla"
