@@ -311,12 +311,33 @@ export const sendChatMessage = async (
               
               try {
                 const parsed = JSON.parse(data)
+                console.log('Parsed SSE data:', parsed) // Debug log
+                
+                // Handle OpenAI Responses API format
+                if (parsed.type === 'response.output_text.delta' && parsed.delta) {
+                  const chunk = parsed.delta
+                  console.log('Processing delta chunk:', chunk) // Debug log
+                  fullMessage += chunk
+                  onChunk?.(chunk)
+                }
+                
+                // Handle response completion
+                if (parsed.type === 'response.output_text.done' && parsed.text) {
+                  console.log('Response completed, full text:', parsed.text) // Debug log
+                  fullMessage = parsed.text
+                  onComplete?.(fullMessage)
+                  return fullMessage
+                }
+                
+                // Fallback: Handle old Chat Completions API format
                 if (parsed.choices?.[0]?.delta?.content) {
                   const chunk = parsed.choices[0].delta.content
+                  console.log('Processing legacy chunk:', chunk) // Debug log
                   fullMessage += chunk
                   onChunk?.(chunk)
                 }
               } catch (e) {
+                console.log('Failed to parse SSE line:', line, e) // Debug log
                 // Ignore parsing errors for non-JSON lines
               }
             }
