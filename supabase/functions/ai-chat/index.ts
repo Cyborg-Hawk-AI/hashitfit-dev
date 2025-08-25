@@ -216,8 +216,26 @@ BEHAVIOR:
     const openaiReq = {
       model: "gpt-4o-mini",
       input: input,
-      stream: true
-      // Temporarily removed tools to test basic streaming
+      stream: true,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "get_user_data",
+            description: "Fetch user's fitness data from registered data sources",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { 
+                  type: "string",
+                  description: "What data to retrieve (e.g., 'weight', 'height', 'recent workouts')"
+                }
+              },
+              required: ["query"]
+            }
+          }
+        }
+      ]
     }
 
     console.log('Calling OpenAI Responses API...')
@@ -235,6 +253,85 @@ BEHAVIOR:
       const body = await upstream.text()
       console.error('OpenAI API error:', body)
       throw new Error(`OpenAI API error: ${body}`)
+    }
+
+    // Handle tool calls if needed (simplified version)
+    const responseText = await upstream.text()
+    let responseData
+    try {
+      responseData = JSON.parse(responseText)
+      
+      // Check if response requires tool calls
+      if (responseData.requires_action && responseData.requires_action.type === 'submit_tool_outputs') {
+        console.log('Tool calls required:', responseData.requires_action.submit_tool_outputs.tool_calls)
+        
+        const toolOutputs: Array<{ tool_call_id: string; output: string }> = []
+        
+        for (const toolCall of responseData.requires_action.submit_tool_outputs.tool_calls) {
+          const { id, function: func } = toolCall
+          
+          try {
+            let result
+            
+            if (func.name === 'get_user_data') {
+              const params = JSON.parse(func.arguments)
+              result = await getUserData(supabaseClient, userId, params)
+            } else {
+              result = { error: `Unknown tool: ${func.name}` }
+            }
+            
+            toolOutputs.push({
+              tool_call_id: id,
+              output: JSON.stringify(result)
+            })
+            
+          } catch (error) {
+            console.error(`Error executing tool ${func.name}:`, error)
+            toolOutputs.push({
+              tool_call_id: id,
+              output: JSON.stringify({ error: error.message })
+            })
+          }
+        }
+        
+        // Submit tool outputs back to OpenAI
+        console.log('Submitting tool outputs:', toolOutputs)
+        
+        const toolResponse = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openaiApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            input: input,
+            stream: true,
+            tools: openaiReq.tools,
+            tool_outputs: toolOutputs
+          })
+        })
+        
+        if (!toolResponse.ok || !toolResponse.body) {
+          const body = await toolResponse.text()
+          console.error('OpenAI tool response error:', body)
+          throw new Error(`OpenAI tool response error: ${body}`)
+        }
+        
+        // Return the tool response stream
+        return new Response(toolResponse.body, {
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            ...corsHeaders
+          }
+        })
+      }
+      
+    } catch (e) {
+      // If not JSON, it's a streaming response, return as-is
+      console.log('Received streaming response, returning directly')
     }
 
 
