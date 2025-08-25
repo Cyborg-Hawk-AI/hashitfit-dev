@@ -103,6 +103,20 @@ serve(async (req) => {
     console.log('Using Supabase URL:', supabaseUrl)
     console.log('Using Supabase Anon Key:', supabaseAnonKey.substring(0, 20) + '...')
 
+    // Extract JWT token from Authorization header
+    const token = authHeader.replace('Bearer ', '')
+    console.log('JWT Token received:', token.substring(0, 20) + '...')
+
+    // Decode JWT to get user ID (this is safe as JWT is signed)
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    const userId = payload.sub
+    console.log('Extracted user ID from JWT:', userId)
+    
+    if (!userId) {
+      throw new Error('No user ID found in JWT')
+    }
+
+    // Create Supabase client with the JWT token
     const supabaseClient = createClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -115,28 +129,23 @@ serve(async (req) => {
       }
     )
 
-    // Get logged in user data with better error handling
-    let user = null
-    try {
-      const { data: { user: userData }, error: userError } = await supabaseClient.auth.getUser()
-      
-      if (userError) {
-        console.error('Error getting user:', userError)
-        throw new Error(`User authentication error: ${userError.message}`)
-      }
-      
-      user = userData
-    } catch (authError) {
-      console.error('Authentication error:', authError)
-      throw new Error(`Authentication failed: ${authError.message}`)
+    // Verify the user exists by trying to fetch their profile
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('id, name')
+      .eq('id', userId)
+      .single()
+
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError)
+      throw new Error(`User verification failed: ${profileError.message}`)
     }
 
-    if (!user) {
-      console.error('No user found in response')
-      throw new Error('No user found')
+    if (!profile) {
+      throw new Error('User profile not found')
     }
 
-    console.log(`Successfully authenticated user: ${user.id}`)
+    console.log(`Successfully verified user: ${profile.name} (${userId})`)
 
     // Get the request body
     const { message, stream = false } = await req.json()
@@ -158,7 +167,7 @@ serve(async (req) => {
       )
     }
 
-    console.log(`Processing message for user ${user.id}`)
+    console.log(`Processing message for user ${userId}`)
 
     // Get or create thread for this user
     let threadId = null
@@ -166,7 +175,7 @@ serve(async (req) => {
     const { data: threadData } = await supabaseClient
       .from('user_assistant_threads')
       .select('thread_id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
     
     if (threadData?.thread_id) {
@@ -197,7 +206,7 @@ serve(async (req) => {
       await supabaseClient
         .from('user_assistant_threads')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           thread_id: threadId,
           created_at: new Date().toISOString()
         })
@@ -237,12 +246,9 @@ serve(async (req) => {
 Key behaviors:
 - Be concise, helpful, and precise with units/dates
 - Avoid medical claims; provide general wellness guidance only
-- Use tools to retrieve user data when relevant
-- Maintain user privacy; never expose PII unless explicitly requested
-- If no data is available, be explicit about what you don't know
-- Provide actionable fitness advice based on available data
-
-Available data sources: profiles, progress_metrics, workout_logs, exercise_logs, nutrition_logs, meal_logs, fitness_assessments, assessment_data
+- Use tools to retrieve relevant user data when asked
+- Maintain context from previous conversations
+- Respect privacy and never expose raw PII unless explicitly requested
 
 Use the tools to provide personalized, data-driven fitness advice.`,
         tools: tools
@@ -294,13 +300,13 @@ Use the tools to provide personalized, data-driven fitness advice.`,
             let result
             switch (functionName) {
               case 'search_memory':
-                result = await searchMemory(supabaseClient, user.id, functionArgs.query, functionArgs.k)
+                result = await searchMemory(supabaseClient, userId, functionArgs.query, functionArgs.k)
                 break
               case 'write_memory':
-                result = await writeMemory(supabaseClient, user.id, functionArgs.kind, functionArgs.content, functionArgs.importance)
+                result = await writeMemory(supabaseClient, userId, functionArgs.kind, functionArgs.content, functionArgs.importance)
                 break
               case 'get_user_data':
-                result = await getUserData(supabaseClient, user.id, functionArgs.query, functionArgs.time_range, functionArgs.source_keys, functionArgs.limit)
+                result = await getUserData(supabaseClient, userId, functionArgs.query, functionArgs.time_range, functionArgs.source_keys, functionArgs.limit)
                 break
               case 'search_documents':
                 result = await searchDocuments(supabaseClient, functionArgs.query, functionArgs.k)
@@ -377,7 +383,7 @@ Use the tools to provide personalized, data-driven fitness advice.`,
     const { data: userMessageData, error: userMessageError } = await supabaseClient
       .from('chat_messages')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         content: message,
         role: 'user',
         created_at: new Date().toISOString(),
@@ -391,7 +397,7 @@ Use the tools to provide personalized, data-driven fitness advice.`,
     const { data: aiMessageData, error: aiMessageError } = await supabaseClient
       .from('chat_messages')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         content: assistantResponse,
         role: 'assistant',
         created_at: new Date().toISOString(),
