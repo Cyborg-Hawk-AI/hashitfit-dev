@@ -135,33 +135,9 @@ export function useDashboardHandlers() {
       return;
     }
 
-    try {
-      // Check if browser supports speech recognition
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        toast({
-          title: "Not Supported",
-          description: "Voice recording is not supported in your browser",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Voice Logging",
-        description: "Click the microphone button to start recording your workout"
-      });
-
-      // The actual voice recording and processing will be handled by the VoiceInput component
-      // This is just triggering the user to use that component
-      
-    } catch (error) {
-      console.error("Error with voice logging:", error);
-      toast({
-        title: "Error",
-        description: "Failed to start voice logging. Please try again.",
-        variant: "destructive"
-      });
-    }
+    // This will be handled by the VoiceLoggingModal component
+    // The modal will be opened by the parent component
+    console.log("Voice logging requested - modal should open");
   };
 
   const handleManualEntry = () => {

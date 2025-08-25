@@ -131,7 +131,25 @@ export default function PlannerPage() {
         recovery: 0
       };
 
-      // Count workouts by category
+      // Get all days in the current week
+      const weekDays = [];
+      for (let i = 0; i < 7; i++) {
+        const day = addDays(startOfCurrentWeek, i);
+        weekDays.push(format(day, 'yyyy-MM-dd'));
+      }
+
+      // Get scheduled workout dates
+      const scheduledDates = scheduledWorkouts?.map(workout => workout.scheduled_date) || [];
+      console.log('📅 Week days:', weekDays);
+      console.log('📅 Scheduled workout dates:', scheduledDates);
+
+      // Calculate recovery days (days without workouts)
+      const recoveryDays = weekDays.filter(day => !scheduledDates.includes(day));
+      categoryCounts.recovery = recoveryDays.length;
+      console.log('🧘 Recovery days (no workouts):', recoveryDays);
+      console.log('🧘 Recovery count:', categoryCounts.recovery);
+
+      // Count workouts by category (excluding recovery workouts since we calculate recovery differently)
       scheduledWorkouts?.forEach((scheduledWorkout) => {
         console.log('🏋️ Processing scheduled workout:', scheduledWorkout);
         const workoutPlan = scheduledWorkout.workout_plans;
@@ -178,11 +196,8 @@ export default function PlannerPage() {
             } else if (category.includes('cardio') || category.includes('hiit') || category.includes('endurance')) {
               console.log('🏃 Categorized as CARDIO');
               categoryCounts.cardio++;
-            } else if (category.includes('recovery') || category.includes('flexibility') || category.includes('yoga')) {
-              console.log('🧘 Categorized as RECOVERY');
-              categoryCounts.recovery++;
             } else {
-              // Default to upper body for unknown categories
+              // Default to upper body for unknown categories (recovery workouts are counted as recovery days, not recovery workouts)
               console.log('💪 Categorized as UPPER BODY (unknown category)');
               categoryCounts.upper++;
             }

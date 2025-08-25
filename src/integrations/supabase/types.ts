@@ -608,6 +608,44 @@ export type Database = {
         }
         Relationships: []
       }
+      progress_photos: {
+        Row: {
+          id: string
+          user_id: string
+          photo_url: string
+          photo_date: string
+          notes: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          photo_url: string
+          photo_date: string
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          photo_url?: string
+          photo_date?: string
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progress_photos_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       exercises: {
         Row: {
           id: string
@@ -685,6 +723,47 @@ export type Database = {
             columns: ["workout_exercise_id"]
             isOneToOne: false
             referencedRelation: "workout_exercises"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      user_feedback: {
+        Row: {
+          created_at: string | null
+          feedback_text: string
+          feedback_type: string
+          id: string
+          page_location: string | null
+          updated_at: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          feedback_text: string
+          feedback_type?: string
+          id?: string
+          page_location?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          feedback_text?: string
+          feedback_type?: string
+          id?: string
+          page_location?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           }
         ]

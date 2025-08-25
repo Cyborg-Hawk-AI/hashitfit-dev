@@ -355,4 +355,230 @@ export class ProgressService {
       return [];
     }
   }
+
+  // Get exercise progress data from workout logs and exercise logs
+  static async getExerciseProgressData(userId: string, startDate: string, endDate: string): Promise<any[]> {
+    try {
+      // Get workout logs in the date range
+      const { data: workoutLogs, error: workoutError } = await supabase
+        .from('workout_logs')
+        .select(`
+          id,
+          start_time,
+          end_time,
+          calories_burned,
+          duration,
+          exercise_logs (
+            id,
+            exercise_name,
+            weight_used,
+            reps_completed,
+            sets_completed,
+            notes
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('start_time', `${startDate}T00:00:00`)
+        .lte('start_time', `${endDate}T23:59:59`)
+        .order('start_time', { ascending: true });
+
+      if (workoutError) throw workoutError;
+
+      // Process the data to group by date and calculate totals
+      const exerciseData: { [date: string]: any } = {};
+
+      workoutLogs?.forEach(log => {
+        const date = log.start_time.split('T')[0];
+        
+        if (!exerciseData[date]) {
+          exerciseData[date] = {
+            date,
+            totalVolume: 0,
+            totalWorkouts: 0,
+            exercises: {}
+          };
+        }
+
+        exerciseData[date].totalWorkouts++;
+
+        // Calculate volume from exercise logs
+        log.exercise_logs?.forEach(exercise => {
+          const exerciseName = exercise.exercise_name;
+          const volume = (parseFloat(exercise.weight_used) || 0) * (exercise.reps_completed || 0) * (exercise.sets_completed || 0);
+          
+          exerciseData[date].totalVolume += volume;
+
+          if (!exerciseData[date].exercises[exerciseName]) {
+            exerciseData[date].exercises[exerciseName] = {
+              totalVolume: 0,
+              maxWeight: 0,
+              totalReps: 0,
+              totalSets: 0
+            };
+          }
+
+          exerciseData[date].exercises[exerciseName].totalVolume += volume;
+          exerciseData[date].exercises[exerciseName].maxWeight = Math.max(
+            exerciseData[date].exercises[exerciseName].maxWeight,
+            parseFloat(exercise.weight_used) || 0
+          );
+          exerciseData[date].exercises[exerciseName].totalReps += exercise.reps_completed || 0;
+          exerciseData[date].exercises[exerciseName].totalSets += exercise.sets_completed || 0;
+        });
+      });
+
+      // Convert to array format
+      return Object.values(exerciseData);
+    } catch (error) {
+      console.error('Error fetching exercise progress data:', error);
+      return [];
+    }
+  }
+
+  // Get top improved exercises
+  static async getTopImprovedExercises(userId: string, period: 'week' | 'month' | 'quarter'): Promise<any[]> {
+    try {
+      const exerciseData = await this.getExerciseProgressData(userId, 
+        period === 'week' ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] :
+        period === 'month' ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] :
+        new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        new Date().toISOString().split('T')[0]
+      );
+
+      // Calculate improvements for each exercise
+      const exerciseImprovements: { [name: string]: any } = {};
+
+      exerciseData.forEach(dayData => {
+        Object.entries(dayData.exercises).forEach(([exerciseName, exerciseData]: [string, any]) => {
+          if (!exerciseImprovements[exerciseName]) {
+            exerciseImprovements[exerciseName] = {
+              name: exerciseName,
+              maxWeight: 0,
+              totalVolume: 0,
+              sessions: 0
+            };
+          }
+
+          exerciseImprovements[exerciseName].maxWeight = Math.max(
+            exerciseImprovements[exerciseName].maxWeight,
+            exerciseData.maxWeight
+          );
+          exerciseImprovements[exerciseName].totalVolume += exerciseData.totalVolume;
+          exerciseImprovements[exerciseName].sessions++;
+        });
+      });
+
+      // Sort by total volume and return top 3
+      return Object.values(exerciseImprovements)
+        .sort((a: any, b: any) => b.totalVolume - a.totalVolume)
+        .slice(0, 3)
+        .map((exercise: any, index) => ({
+          ...exercise,
+          rank: index + 1,
+          improvement: `+${Math.round(exercise.maxWeight)}kg max weight`
+        }));
+    } catch (error) {
+      console.error('Error fetching top improved exercises:', error);
+      return [];
+    }
+  }
+
+  // Progress Photos Methods
+  static async uploadProgressPhoto(userId: string, file: File, photoDate: string, notes?: string): Promise<any> {
+    try {
+      // Upload file to Supabase Storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/${Date.now()}.${fileExt}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('progress-photos')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('progress-photos')
+        .getPublicUrl(fileName);
+
+      // Save to database
+      const { data, error } = await supabase
+        .from('progress_photos')
+        .insert([{
+          user_id: userId,
+          photo_url: publicUrl,
+          photo_date: photoDate,
+          notes: notes || null
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error uploading progress photo:', error);
+      throw error;
+    }
+  }
+
+  static async getProgressPhotos(userId: string, startDate?: string, endDate?: string): Promise<any[]> {
+    try {
+      let query = supabase
+        .from('progress_photos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('photo_date', { ascending: false });
+
+      if (startDate) {
+        query = query.gte('photo_date', startDate);
+      }
+      if (endDate) {
+        query = query.lte('photo_date', endDate);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching progress photos:', error);
+      return [];
+    }
+  }
+
+  static async deleteProgressPhoto(userId: string, photoId: string): Promise<boolean> {
+    try {
+      // Get photo URL first
+      const { data: photo, error: fetchError } = await supabase
+        .from('progress_photos')
+        .select('photo_url')
+        .eq('id', photoId)
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Delete from storage
+      if (photo?.photo_url) {
+        const fileName = photo.photo_url.split('/').pop();
+        if (fileName) {
+          await supabase.storage
+            .from('progress-photos')
+            .remove([`${userId}/${fileName}`]);
+        }
+      }
+
+      // Delete from database
+      const { error } = await supabase
+        .from('progress_photos')
+        .delete()
+        .eq('id', photoId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting progress photo:', error);
+      return false;
+    }
+  }
 }

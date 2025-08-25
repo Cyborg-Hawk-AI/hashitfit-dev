@@ -16,6 +16,7 @@ import Progress from "./pages/Progress";
 import { UserProvider } from "./context/UserContext";
 import { AuthProvider } from "./hooks/useAuth";
 import { AuthGuard } from "./components/AuthGuard";
+import { FeedbackFAB } from "./components/FeedbackFAB";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ResetPassword from "./pages/ResetPassword";
@@ -30,6 +31,7 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
+            <FeedbackFAB />
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Index />} />

@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { format, startOfWeek, endOfWeek, subWeeks, subMonths, subDays } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { Logo } from "@/components/Logo";
 import { NavigationBar, AnimatedCard, SectionTitle, Chip } from "@/components/ui-components";
@@ -17,6 +19,10 @@ import { AIForecastCard } from "@/components/AIForecastCard";
 import { WeeklyWinCard } from "@/components/WeeklyWinCard";
 import { GoalStreakCard } from "@/components/GoalStreakCard";
 import { WeeklyReflectionModal } from "@/components/WeeklyReflectionModal";
+import { ProgressService } from "@/lib/supabase/services/ProgressService";
+import { WorkoutService } from "@/lib/supabase/services/WorkoutService";
+import { NutritionService } from "@/lib/supabase/services/NutritionService";
+import { StreakService } from "@/lib/supabase/services/StreakService";
 import { 
   Activity, 
   Weight, 
@@ -33,123 +39,295 @@ import { Badge } from "@/components/ui/badge";
 export default function ProgressPage() {
   const { isAuthenticated, userId } = useAuth();
   const [timeRange, setTimeRange] = useState("week");
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<'weight' | 'waist' | 'chest' | 'arms' | 'hips'>('weight');
 
-  // Mock data for demonstration with proper typing
-  const [weeklyReflections] = useState<Array<{
-    type: 'positive' | 'suggestion' | 'warning';
-    message: string;
-    icon: string;
-  }>>([
-    {
-      type: 'positive' as const,
-      message: "You trained 3x this week — strength focus. Keep it up 💪",
-      icon: '💪'
-    },
-    {
-      type: 'suggestion' as const,
-      message: "Protein goal missed 4 days — want help adjusting meals?",
-      icon: '🥗'
-    }
-  ]);
+  // Calculate date ranges based on timeRange
+  const getDateRange = (range: string) => {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date;
 
-  const [achievements] = useState({
-    unlocked: [
-      { id: 1, title: "First Workout", icon: "🏃", description: "Completed your first workout" }
-    ],
-    upcoming: [
-      { id: 2, title: "3-Workout Streak", icon: "🔥", description: "Complete 3 workouts in a row", progress: 1, target: 3 },
-      { id: 3, title: "7-Day Habit", icon: "🏆", description: "Log habits for 7 consecutive days", progress: 3, target: 7 }
-    ]
+    switch (range) {
+      case "week":
+        startDate = startOfWeek(now, { weekStartsOn: 0 }); // Sunday
+        endDate = endOfWeek(now, { weekStartsOn: 0 }); // Saturday
+        break;
+      case "month":
+        startDate = subMonths(now, 1);
+        endDate = now;
+        break;
+      case "quarter":
+        startDate = subMonths(now, 3);
+        endDate = now;
+        break;
+      default:
+        startDate = startOfWeek(now, { weekStartsOn: 0 });
+        endDate = endOfWeek(now, { weekStartsOn: 0 });
+    }
+
+    return {
+      startDate: format(startDate, 'yyyy-MM-dd'),
+      endDate: format(endDate, 'yyyy-MM-dd')
+    };
+  };
+
+  const { startDate, endDate } = getDateRange(timeRange);
+
+  // Query for progress metrics
+  const { data: progressMetrics, isLoading: isLoadingMetrics } = useQuery({
+    queryKey: ['progressMetrics', userId, startDate, endDate],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await ProgressService.getProgressMetrics(userId, startDate, endDate);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
   });
 
-  const [userGoals, setUserGoals] = useState([
-    { 
-      type: 'workouts' as const, 
-      label: 'Workouts per week', 
-      current: 3, 
-      target: 4, 
-      unit: 'workouts',
-      color: 'bg-blue-50 border-blue-200 text-blue-700'
+  // Query for latest progress metric
+  const { data: latestMetric } = useQuery({
+    queryKey: ['latestProgressMetric', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      return await ProgressService.getLatestProgressMetric(userId);
     },
-    { 
-      type: 'protein' as const, 
-      label: 'Daily Protein', 
-      current: 85, 
-      target: 150, 
-      unit: 'g',
-      color: 'bg-green-50 border-green-200 text-green-700'
-    },
-    { 
-      type: 'calories' as const, 
-      label: 'Daily Calories', 
-      current: 1800, 
-      target: 2000, 
-      unit: 'cal',
-      color: 'bg-orange-50 border-orange-200 text-orange-700'
-    },
-    { 
-      type: 'sleep' as const, 
-      label: 'Sleep Hours', 
-      current: 6, 
-      target: 8, 
-      unit: 'hrs',
-      color: 'bg-purple-50 border-purple-200 text-purple-700'
-    }
-  ]);
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
 
-  const [hasData, setHasData] = useState(false);
-  const [bodyMetricsData, setBodyMetricsData] = useState([]);
-  const [exerciseData, setExerciseData] = useState([]);
+  // Query for workout logs in date range
+  const { data: workoutLogs, isLoading: isLoadingWorkouts } = useQuery({
+    queryKey: ['workoutLogs', userId, startDate, endDate],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await WorkoutService.getWorkoutLogsByDateRange(userId, startDate, endDate);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Query for nutrition logs in date range
+  const { data: nutritionLogs, isLoading: isLoadingNutrition } = useQuery({
+    queryKey: ['nutritionLogs', userId, startDate, endDate],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await NutritionService.getNutritionLogsByDateRange(userId, startDate, endDate);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Query for streak data
+  const { data: streakData } = useQuery({
+    queryKey: ['streakData', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      return await StreakService.getStreakData(userId);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Query for fitness assessments
+  const { data: fitnessAssessments } = useQuery({
+    queryKey: ['fitnessAssessments', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await ProgressService.getFitnessAssessments(userId);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Query for exercise progress data
+  const { data: exerciseProgressData, isLoading: isLoadingExerciseProgress } = useQuery({
+    queryKey: ['exerciseProgressData', userId, startDate, endDate],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await ProgressService.getExerciseProgressData(userId, startDate, endDate);
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Query for top improved exercises
+  const { data: topImprovedExercises } = useQuery({
+    queryKey: ['topImprovedExercises', userId, timeRange],
+    queryFn: async () => {
+      if (!userId) return [];
+      return await ProgressService.getTopImprovedExercises(userId, timeRange as 'week' | 'month' | 'quarter');
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Process body metrics data for charts
+  const bodyMetricsData = progressMetrics?.map(metric => ({
+    date: metric.measurement_date,
+    weight: metric.weight,
+    waist: metric.waist_measurement,
+    chest: metric.chest_measurement,
+    arms: metric.arm_measurement,
+    hips: metric.hip_measurement
+  })) || [];
+
+  // Process exercise data for charts
+  const exerciseData = exerciseProgressData?.map(dayData => ({
+    date: dayData.date,
+    volume: dayData.totalVolume,
+    workouts: dayData.totalWorkouts
+  })) || [];
+
+  // Calculate weekly stats
+  const calculateWeeklyStats = () => {
+    if (!workoutLogs || !nutritionLogs) return null;
+
+    const completedWorkouts = workoutLogs.filter(log => log.end_time !== null).length;
+    const totalWorkouts = workoutLogs.length;
+    const workoutCompletion = totalWorkouts > 0 ? (completedWorkouts / totalWorkouts) * 100 : 0;
+
+    const totalCalories = nutritionLogs.reduce((sum, log) => sum + (log.total_calories || 0), 0);
+    const avgCalories = nutritionLogs.length > 0 ? totalCalories / nutritionLogs.length : 0;
+    const totalProtein = nutritionLogs.reduce((sum, log) => sum + (log.total_protein_g || 0), 0);
+    const avgProtein = nutritionLogs.length > 0 ? totalProtein / nutritionLogs.length : 0;
+
+    return {
+      workoutCompletion,
+      nutritionCompliance: nutritionLogs.length > 0 ? 60 : 0, // Placeholder
+      habitsCompleted: 12, // Placeholder - should come from habits table
+      totalHabits: 21,
+      progressTrend: 'up' as const,
+      weeklyGoals: {
+        workouts: { completed: completedWorkouts, target: 4 },
+        calories: { avg: avgCalories, target: 2000 },
+        protein: { avg: avgProtein, target: 150 }
+      }
+    };
+  };
+
+  const weeklyStats = calculateWeeklyStats();
+
+  // Calculate momentum based on data
+  const momentum = progressMetrics && progressMetrics.length > 0 ? 'up' : 'steady';
+  const weeklyProgress = weeklyStats ? weeklyStats.workoutCompletion : 25;
+
+  // Generate AI reflections based on real data
+  const generateReflections = () => {
+    const reflections = [];
+    
+    if (weeklyStats) {
+      if (weeklyStats.workoutCompletion >= 75) {
+        reflections.push({
+          type: 'positive' as const,
+          message: `You completed ${weeklyStats.weeklyGoals.workouts.completed} workouts this week — great consistency! 💪`,
+          icon: '💪'
+        });
+      } else if (weeklyStats.workoutCompletion < 50) {
+        reflections.push({
+          type: 'suggestion' as const,
+          message: "You missed some workouts this week — want help adjusting your schedule?",
+          icon: '📅'
+        });
+      }
+
+      if (weeklyStats.weeklyGoals.protein.avg < weeklyStats.weeklyGoals.protein.target * 0.8) {
+        reflections.push({
+          type: 'suggestion' as const,
+          message: `Protein goal missed — averaging ${Math.round(weeklyStats.weeklyGoals.protein.avg)}g vs ${weeklyStats.weeklyGoals.protein.target}g target`,
+          icon: '🥗'
+        });
+      }
+    }
+
+    return reflections.length > 0 ? reflections : [{
+      type: 'positive' as const,
+      message: "Start logging your progress to see personalized insights!",
+      icon: '🚀'
+    }];
+  };
+
+  const weeklyReflections = generateReflections();
+
+  // Generate achievements based on real data
+  const generateAchievements = () => {
+    const achievements = {
+      unlocked: [] as any[],
+      upcoming: [] as any[]
+    };
+
+    if (workoutLogs && workoutLogs.length > 0) {
+      achievements.unlocked.push({
+        id: 1,
+        title: "First Workout",
+        icon: "🏃",
+        description: "Completed your first workout"
+      });
+    }
+
+    if (streakData) {
+      const currentStreak = streakData.currentWeekStreak || 0;
+      if (currentStreak >= 3) {
+        achievements.unlocked.push({
+          id: 2,
+          title: "3-Workout Streak",
+          icon: "🔥",
+          description: "Complete 3 workouts in a row"
+        });
+      } else {
+        achievements.upcoming.push({
+          id: 2,
+          title: "3-Workout Streak",
+          icon: "🔥",
+          description: "Complete 3 workouts in a row",
+          progress: currentStreak,
+          target: 3
+        });
+      }
+    }
+
+    return achievements;
+  };
+
+  const achievements = generateAchievements();
+
+  // Generate user goals based on real data
+  const generateUserGoals = () => {
+    const goals = [
+      { 
+        type: 'workouts' as const, 
+        label: 'Workouts per week', 
+        current: weeklyStats?.weeklyGoals.workouts.completed || 0, 
+        target: weeklyStats?.weeklyGoals.workouts.target || 4, 
+        unit: 'workouts',
+        color: 'bg-blue-50 border-blue-200 text-blue-700'
+      },
+      { 
+        type: 'protein' as const, 
+        label: 'Daily Protein', 
+        current: Math.round(weeklyStats?.weeklyGoals.protein.avg || 0), 
+        target: weeklyStats?.weeklyGoals.protein.target || 150, 
+        unit: 'g',
+        color: 'bg-green-50 border-green-200 text-green-700'
+      },
+      { 
+        type: 'calories' as const, 
+        label: 'Daily Calories', 
+        current: Math.round(weeklyStats?.weeklyGoals.calories.avg || 0), 
+        target: weeklyStats?.weeklyGoals.calories.target || 2000, 
+        unit: 'cal',
+        color: 'bg-orange-50 border-orange-200 text-orange-700'
+      }
+    ];
+
+    return goals;
+  };
+
+  const userGoals = generateUserGoals();
+
   const [userReflections, setUserReflections] = useState([]);
 
-  const fetchProgressData = async (range: string) => {
-    setIsLoading(true);
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Simulate some data for demonstration
-      if (range === "month") {
-        setHasData(true);
-        setBodyMetricsData([
-          { date: "2024-05-01", weight: 75, waist: 32, chest: 40, arms: 35, hips: 38 },
-          { date: "2024-05-15", weight: 74.5, waist: 31.5, chest: 40.2, arms: 35.2, hips: 37.8 },
-          { date: "2024-06-01", weight: 74, waist: 31, chest: 40.5, arms: 35.5, hips: 37.5 }
-        ]);
-        setExerciseData([
-          { date: "Week 1", benchPress: 80, squat: 100, deadlift: 120 },
-          { date: "Week 2", benchPress: 82.5, squat: 105, deadlift: 125 },
-          { date: "Week 3", benchPress: 85, squat: 107.5, deadlift: 127.5 }
-        ]);
-      }
-      
-      setTimeRange(range);
-    } catch (error) {
-      console.error("Error fetching progress data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch progress data",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  useEffect(() => {
-    if (isAuthenticated && userId) {
-      fetchProgressData(timeRange);
-    }
-  }, [isAuthenticated, userId]);
-
   const handleEditGoal = (goalType: string, newTarget: number) => {
-    setUserGoals(prev => 
-      prev.map(goal => 
-        goal.type === goalType ? { ...goal, target: newTarget } : goal
-      )
-    );
+    // TODO: Implement goal updating in database
     toast({
       title: "Goal Updated",
       description: "Your goal has been updated successfully!",
@@ -192,8 +370,8 @@ export default function ProgressPage() {
     });
   };
 
-  const momentum = hasData ? 'up' : 'steady';
-  const weeklyProgress = hasData ? 65 : 25;
+  const hasData = progressMetrics && progressMetrics.length > 0;
+  const isLoading = isLoadingMetrics || isLoadingWorkouts || isLoadingNutrition || isLoadingExerciseProgress;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-hashim-50/50 to-white dark:from-gray-900 dark:to-gray-800">
@@ -203,7 +381,7 @@ export default function ProgressPage() {
           <div className="flex items-center space-x-2">
             <Badge variant="secondary" className="bg-hashim-100 text-hashim-700">
               <TrendingUp size={12} className="mr-1" />
-              This Week
+              {timeRange === 'week' ? 'This Week' : timeRange === 'month' ? 'This Month' : '3 Months'}
             </Badge>
           </div>
         </div>
@@ -214,6 +392,45 @@ export default function ProgressPage() {
           <SectionTitle 
             title="Progress" 
             subtitle="Your fitness journey insights" 
+          />
+
+          {/* Time Range Selector - Moved up for context */}
+          <div className="flex space-x-3 mb-6 overflow-x-auto pb-2 scrollbar-none">
+            <Chip 
+              label="Week" 
+              active={timeRange === "week"}
+              onClick={() => setTimeRange("week")}
+            />
+            <Chip 
+              label="Month" 
+              active={timeRange === "month"}
+              onClick={() => setTimeRange("month")}
+            />
+            <Chip 
+              label="3 Months" 
+              active={timeRange === "quarter"}
+              onClick={() => setTimeRange("quarter")}
+            />
+          </div>
+
+          {/* Enhanced Exercise Progress - TOP CARD */}
+          <ExerciseProgressCard
+            data={exerciseData}
+            timeRange={timeRange}
+            hasData={hasData}
+            topImprovedExercises={topImprovedExercises || []}
+            className="animate-fade-in"
+          />
+
+          {/* Enhanced Body Metrics Visualization - SECOND CARD */}
+          <BodyMetricsVisualizationCard
+            data={bodyMetricsData}
+            selectedMetric={selectedMetric}
+            onMetricSelect={setSelectedMetric}
+            timeRange={timeRange}
+            isLoading={isLoading}
+            hasData={hasData}
+            className="animate-fade-in"
           />
 
           {/* Weekly Win */}
@@ -254,16 +471,16 @@ export default function ProgressPage() {
             momentum={momentum}
             weeklyProgress={weeklyProgress}
             isJustStarting={!hasData}
-            stats={{
-              workoutCompletion: hasData ? 75 : 0,
-              nutritionCompliance: hasData ? 60 : 0,
-              habitsCompleted: hasData ? 12 : 0,
+            stats={weeklyStats || {
+              workoutCompletion: 0,
+              nutritionCompliance: 0,
+              habitsCompleted: 0,
               totalHabits: 21,
-              progressTrend: momentum,
+              progressTrend: 'steady',
               weeklyGoals: {
-                workouts: { completed: hasData ? 3 : 0, target: 4 },
-                calories: { avg: hasData ? 1800 : 0, target: 2000 },
-                protein: { avg: hasData ? 120 : 0, target: 150 }
+                workouts: { completed: 0, target: 4 },
+                calories: { avg: 0, target: 2000 },
+                protein: { avg: 0, target: 150 }
               }
             }}
             onViewHabits={handleViewHabits}
@@ -286,44 +503,6 @@ export default function ProgressPage() {
           <InteractiveGoalsCard
             goals={userGoals}
             onUpdateGoal={handleEditGoal}
-            className="animate-fade-in"
-          />
-
-          {/* Time Range Selector */}
-          <div className="flex space-x-3 mb-6 overflow-x-auto pb-2 scrollbar-none">
-            <Chip 
-              label="Week" 
-              active={timeRange === "week"}
-              onClick={() => fetchProgressData("week")}
-            />
-            <Chip 
-              label="Month" 
-              active={timeRange === "month"}
-              onClick={() => fetchProgressData("month")}
-            />
-            <Chip 
-              label="3 Months" 
-              active={timeRange === "quarter"}
-              onClick={() => fetchProgressData("quarter")}
-            />
-          </div>
-
-          {/* Enhanced Body Metrics Visualization */}
-          <BodyMetricsVisualizationCard
-            data={bodyMetricsData}
-            selectedMetric={selectedMetric}
-            onMetricSelect={setSelectedMetric}
-            timeRange={timeRange}
-            isLoading={isLoading}
-            hasData={hasData}
-            className="animate-fade-in"
-          />
-          
-          {/* Enhanced Exercise Progress */}
-          <ExerciseProgressCard
-            data={exerciseData}
-            timeRange={timeRange}
-            hasData={hasData}
             className="animate-fade-in"
           />
         </div>

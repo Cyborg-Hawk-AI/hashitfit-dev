@@ -10,6 +10,7 @@ interface ExerciseProgressCardProps {
   data: any[];
   timeRange: string;
   hasData: boolean;
+  topImprovedExercises?: any[];
   className?: string;
 }
 
@@ -17,15 +18,11 @@ export function ExerciseProgressCard({
   data, 
   timeRange, 
   hasData, 
+  topImprovedExercises = [],
   className 
 }: ExerciseProgressCardProps) {
-  const topImprovedExercises = hasData ? [
-    { name: 'Bench Press', improvement: '+12.5kg', trend: 'up' },
-    { name: 'Squat', improvement: '+15kg', trend: 'up' },
-    { name: 'Deadlift', improvement: '+10kg', trend: 'up' }
-  ] : [];
-
-  const mostLoggedExercise = hasData ? "Bench Press (6 sessions)" : null;
+  const mostLoggedExercise = hasData && data.length > 0 ? 
+    `${data[0].date} (${data[0].workouts} workouts)` : null;
 
   return (
     <Card className={className}>
@@ -50,7 +47,7 @@ export function ExerciseProgressCard({
             {/* Most Logged Exercise Preview */}
             {mostLoggedExercise && (
               <div className="p-3 bg-hashim-50 border border-hashim-200 rounded-lg animate-fade-in">
-                <h4 className="text-sm font-medium text-hashim-800 mb-1">🏆 Most logged exercise</h4>
+                <h4 className="text-sm font-medium text-hashim-800 mb-1">🏆 Recent activity</h4>
                 <p className="text-xs text-hashim-600">{mostLoggedExercise}</p>
               </div>
             )}
@@ -58,13 +55,13 @@ export function ExerciseProgressCard({
             {/* Volume Chart */}
             <div className="h-48 overflow-hidden">
               <div className="mb-3">
-                <h4 className="text-sm font-medium mb-1">Weekly Volume Trend</h4>
-                <p className="text-xs text-muted-foreground">Total weight lifted per week</p>
+                <h4 className="text-sm font-medium mb-1">Volume Trend</h4>
+                <p className="text-xs text-muted-foreground">Total weight lifted per day</p>
               </div>
               <ProgressChart
                 data={data.map(item => ({
                   date: item.date,
-                  volume: (item.benchPress + item.squat + item.deadlift) * 15
+                  volume: item.volume
                 }))}
                 singleMetric="volume"
               />
@@ -77,20 +74,26 @@ export function ExerciseProgressCard({
                 Most Improved ({timeRange})
               </h4>
               <div className="space-y-2">
-                {topImprovedExercises.map((exercise, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-green-50 rounded-lg animate-fade-in hover:shadow-md transition-all">
-                    <div className="flex items-center space-x-2">
-                      <Badge className="bg-green-600 text-white text-xs">
-                        #{index + 1}
-                      </Badge>
-                      <span className="text-sm font-medium">{exercise.name}</span>
+                {topImprovedExercises.length > 0 ? (
+                  topImprovedExercises.map((exercise, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-green-50 rounded-lg animate-fade-in hover:shadow-md transition-all">
+                      <div className="flex items-center space-x-2">
+                        <Badge className="bg-green-600 text-white text-xs">
+                          #{exercise.rank}
+                        </Badge>
+                        <span className="text-sm font-medium">{exercise.name}</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-sm font-bold text-green-600">{exercise.improvement}</span>
+                        <TrendingUp className="h-3 w-3 text-green-500" />
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <span className="text-sm font-bold text-green-600">{exercise.improvement}</span>
-                      <TrendingUp className="h-3 w-3 text-green-500" />
-                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className="text-sm text-gray-600">No exercise data available yet</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 

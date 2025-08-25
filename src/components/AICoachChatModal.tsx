@@ -32,8 +32,8 @@ export function AICoachChatModal({ isOpen, onClose }: AICoachChatModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] h-[600px] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] h-[85vh] sm:h-[600px] max-h-[600px] flex flex-col p-0 fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999]">
+        <DialogHeader className="flex-shrink-0 p-4 border-b">
           <DialogTitle className="flex items-center justify-between">
             <span>🤖 AI Fitness Coach</span>
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -42,8 +42,8 @@ export function AICoachChatModal({ isOpen, onClose }: AICoachChatModalProps) {
           </DialogTitle>
         </DialogHeader>
         
-        <div className="flex-1 flex flex-col">
-          <ScrollArea className="flex-1 p-4 border rounded-lg mb-4">
+        <div className="flex-1 flex flex-col min-h-0">
+          <ScrollArea className="flex-1 p-4 min-h-0">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div
@@ -77,7 +77,7 @@ export function AICoachChatModal({ isOpen, onClose }: AICoachChatModalProps) {
             </div>
           </ScrollArea>
           
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 p-4 border-t flex-shrink-0 bg-white dark:bg-gray-900">
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}

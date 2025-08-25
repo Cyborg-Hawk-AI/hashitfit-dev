@@ -13,10 +13,12 @@ import { useDashboardHandlers } from "@/hooks/useDashboardHandlers";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { PlanGenerationService } from "@/lib/supabase/services/PlanGenerationService";
+import { VoiceLoggingModal } from "@/components/VoiceLoggingModal";
 
 export default function DashboardPage() {
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [isCheckingAssessment, setIsCheckingAssessment] = useState(true);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const { handleLogWorkoutVoice, handleSnapMeal } = useDashboardHandlers();
   const { userId } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +62,19 @@ export default function DashboardPage() {
     checkAssessmentStatus();
   }, [userId, navigate]);
 
+  const handleVoiceLogClick = () => {
+    setShowVoiceModal(true);
+  };
+
+  const handleVoiceModalClose = () => {
+    setShowVoiceModal(false);
+  };
+
+  const handleWorkoutLogged = () => {
+    // Refresh the dashboard data
+    window.location.reload();
+  };
+
   // Show loading while checking assessment status
   if (isCheckingAssessment) {
     return (
@@ -102,7 +117,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between w-64 px-4">
           {/* Log Workout Button */}
           <Button
-            onClick={handleLogWorkoutVoice}
+            onClick={handleVoiceLogClick}
             className="w-14 h-14 rounded-full bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 p-0"
           >
             <Mic size={24} />
@@ -127,6 +142,12 @@ export default function DashboardPage() {
       <UserStatsModal 
         isOpen={showStatsModal}
         onClose={() => setShowStatsModal(false)}
+      />
+
+      <VoiceLoggingModal
+        isOpen={showVoiceModal}
+        onClose={handleVoiceModalClose}
+        onWorkoutLogged={handleWorkoutLogged}
       />
     </div>
   );
