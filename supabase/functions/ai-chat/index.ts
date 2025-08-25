@@ -242,77 +242,9 @@ Use the tools to provide personalized, data-driven fitness advice.`
     
     if (userMessageError) throw userMessageError
 
-    // Set up streaming response
-    const { readable, writable } = new TransformStream()
-    const writer = writable.getWriter()
-
-    // Process the stream
-    (async () => {
-      const encoder = new TextEncoder()
-      let fullResponse = ''
-      
-      // Optional keepalive every 15s
-      const keepalive = setInterval(async () => {
-        try {
-          await writer.write(encoder.encode(`: ping\n\n`))
-        } catch (e) {
-          // Ignore write errors during keepalive
-        }
-      }, 15000)
-
-      try {
-        // Ensure upstream.body is not null (we already checked above)
-        const body = upstream.body!
-        
-        for await (const chunk of body) {
-          // Pass through exactly as received (already SSE-formatted by OpenAI)
-          await writer.write(chunk)
-          
-          // Extract content for logging (simplified - in production you'd parse the SSE properly)
-          const chunkText = new TextDecoder().decode(chunk)
-          if (chunkText.includes('"content"')) {
-            // This is a simplified extraction - in production you'd properly parse the SSE
-            const match = chunkText.match(/"content":\s*"([^"]*)"/)
-            if (match) {
-              fullResponse += match[1]
-            }
-          }
-        }
-        
-        // Log the AI response to the database
-        if (fullResponse.trim()) {
-          const { error: aiMessageError } = await supabaseClient
-            .from('chat_messages')
-            .insert({
-              user_id: userId,
-              content: fullResponse,
-              role: 'assistant',
-              created_at: new Date().toISOString(),
-            })
-          
-          if (aiMessageError) {
-            console.error('Error logging AI response:', aiMessageError)
-          }
-        }
-        
-      } catch (e) {
-        console.error('Streaming error:', e)
-        try {
-          await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`))
-        } catch (writeError) {
-          console.error('Error writing error to stream:', writeError)
-        }
-      } finally {
-        clearInterval(keepalive)
-        try {
-          await writer.close()
-        } catch (closeError) {
-          console.error('Error closing writer:', closeError)
-        }
-      }
-    })()
-
-    return new Response(readable, {
+    // IMPORTANT: Return the upstream SSE body as-is (Pattern A - Direct pass-through)
+    // This is the most efficient approach for streaming at the edge
+    return new Response(upstream.body, {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
